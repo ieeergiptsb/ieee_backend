@@ -19,7 +19,7 @@ Your SendGrid API key is in commits `8362e21` and `ec5a1a4` in git history. GitH
 ### Step 2: Rotate Your SendGrid API Key (IMPORTANT!)
 1. Go to SendGrid Dashboard: https://app.sendgrid.com/
 2. Navigate to **Settings** → **API Keys**
-3. Delete the old API key: `SG.TZSttb1FQYS0rAXy_9w7sw...`
+3. Delete the old API key (the one that was committed to git)
 4. Create a **new API key** with the same permissions
 5. Copy the new API key
 
