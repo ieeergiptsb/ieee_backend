@@ -16,9 +16,40 @@ connectDB();
 const app = express();
 const PORT = process.env.PORT || 8000;
 
-// Middleware
+// Middleware - CORS configuration
+// Allow both with and without www subdomain
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'http://localhost:3000',
+  'https://ieeergipt.in',
+  'https://www.ieeergipt.in',
+  'http://localhost:3000',
+].filter(Boolean); // Remove any undefined values
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin matches any allowed origin (with or without www)
+    const isAllowed = allowedOrigins.some(allowedOrigin => {
+      // Exact match
+      if (origin === allowedOrigin) return true;
+      
+      // Normalize by removing www for comparison
+      const normalizeUrl = (url) => {
+        return url.replace(/^https?:\/\/(www\.)?/, '').toLowerCase();
+      };
+      
+      return normalizeUrl(origin) === normalizeUrl(allowedOrigin);
+    });
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
 }));
 app.use(express.json());
