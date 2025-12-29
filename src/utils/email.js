@@ -1,116 +1,134 @@
 import nodemailer from 'nodemailer';
+import sgMail from '@sendgrid/mail';
 
-// Create transporter function for SMTP (nodemailer)
-// Uses connection pooling for faster delivery
-let cachedTransporter = null;
+// Check if SendGrid is configured
+const isSendGridConfigured = () => {
+  const apiKey = process.env.SENDGRID_API_KEY;
+  const isConfigured = !!apiKey && apiKey.startsWith('SG.');
+  console.log(`🔍 SendGrid configured: ${isConfigured}`);
+  return isConfigured;
+};
 
-const getSMTPTransporter = async () => {
-  // Return cached transporter if available and verified
-  if (cachedTransporter) {
-    return cachedTransporter;
+// Initialize SendGrid
+let sendGridInitialized = false;
+const initializeSendGrid = () => {
+  if (sendGridInitialized) return;
+  
+  if (isSendGridConfigured()) {
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    console.log('✅ SendGrid initialized successfully');
+    sendGridInitialized = true;
+  } else {
+    console.log('⚠️ SendGrid not configured, will use SMTP fallback');
+    sendGridInitialized = true;
   }
+};
+
+// Create SMTP transporter (fallback only)
+const getSMTPTransporter = () => {
   const host = process.env.EMAIL_HOST || 'smtp.gmail.com';
   const port = parseInt(process.env.EMAIL_PORT || '587');
   const user = process.env.EMAIL_USER;
   const pass = process.env.EMAIL_PASS;
-  
-  // Automatically set secure based on port (465 = SSL, 587 = TLS)
   const secure = port === 465;
 
-  console.log('📧 Nodemailer SMTP Config:', { 
-    host, 
-    port, 
-    secure,
-    user: user ? `${user.substring(0, 5)}***` : 'NOT SET',
-    pass: pass ? '***SET***' : 'NOT SET'
-  });
-
   if (!user || !pass) {
-    console.warn('⚠️ SMTP credentials not configured. Please set EMAIL_USER and EMAIL_PASS environment variables.');
     return null;
   }
 
-  try {
-    const transporter = nodemailer.createTransport({
-      host: host,
-      port: port,
-      secure: secure, // true for 465 (SSL), false for 587 (TLS)
-      auth: {
-        user: user,
-        pass: pass, // Use Gmail App Password here for best performance
-      },
-      // Disable connection pooling on Render (can cause timeout issues)
-      // pool: true,
-      // maxConnections: 5,
-      // maxMessages: 100,
-      // Increased timeouts for Render/cloud environments
-      connectionTimeout: 60000, // 60 seconds (increased for Render network issues)
-      socketTimeout: 60000, // 60 seconds (increased for Render network issues)
-      greetingTimeout: 30000, // 30 seconds (increased for Render network issues)
-      // TLS settings optimized for app passwords
-      tls: {
-        rejectUnauthorized: false,
-        minVersion: 'TLSv1.2',
-      },
-      // Enable debug for troubleshooting
-      debug: false, // Disabled to reduce logs on Render
-      logger: false,
-    });
+  return nodemailer.createTransport({
+    host: host,
+    port: port,
+    secure: secure,
+    auth: { user: user, pass: pass },
+    tls: { rejectUnauthorized: false },
+    connectionTimeout: 30000,
+    socketTimeout: 30000,
+  });
+};
 
-    // Try to verify connection, but don't fail if it times out (lazy verification)
-    // This allows emails to be sent even if initial verification fails
-    try {
-      await Promise.race([
-        transporter.verify(),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Verification timeout')), 20000)
-        )
-      ]);
-      console.log('✅ Nodemailer transporter created and verified successfully');
-    } catch (verifyError) {
-      // Verification failed, but transporter might still work
-      console.log('⚠️ Transporter verification timeout/skipped (will verify on first send)');
-      console.log('📧 Transporter created (lazy verification mode)');
-    }
-    
-    console.log('📧 Using App Password authentication (recommended for Gmail)');
-    
-    // Cache the transporter for reuse
-    cachedTransporter = transporter;
-    return transporter;
+// Send OTP email via SendGrid
+const sendOTPEmailViaSendGrid = async (email, otpCode, type = 'registration') => {
+  initializeSendGrid();
+  
+  const subject = type === 'registration' 
+    ? 'IEEE RGIPT - Email Verification Code'
+    : 'IEEE RGIPT - OTP Code';
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .otp-box { background: white; border: 2px dashed #667eea; padding: 20px; text-align: center; margin: 20px 0; border-radius: 8px; }
+        .otp-code { font-size: 32px; font-weight: bold; color: #667eea; letter-spacing: 5px; }
+        .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>IEEE RGIPT</h1>
+        </div>
+        <div class="content">
+          <h2>${type === 'registration' ? 'Email Verification' : 'OTP Code'}</h2>
+          <p>Hello,</p>
+          <p>${type === 'registration' 
+            ? 'Thank you for registering with IEEE RGIPT. Please use the following code to verify your email address:'
+            : 'Please use the following OTP code:'}</p>
+          
+          <div class="otp-box">
+            <div class="otp-code">${otpCode}</div>
+          </div>
+          
+          <p>This code will expire in <strong>10 minutes</strong>.</p>
+          <p>If you didn't request this code, please ignore this email.</p>
+        </div>
+        <div class="footer">
+          <p>© 2025 IEEE Student Branch, RGIPT. All rights reserved.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const msg = {
+    to: email,
+    from: process.env.EMAIL_FROM || 'ieee_sb@rgipt.ac.in',
+    subject: subject,
+    html: html,
+  };
+
+  try {
+    const result = await sgMail.send(msg);
+    console.log('✅ Email sent successfully via SendGrid');
+    return { success: true, messageId: result[0]?.headers['x-message-id'] };
   } catch (error) {
-    console.error('❌ Error creating SMTP transporter:', error.message);
-    if (error.message.includes('Invalid login')) {
-      console.error('⚠️ Authentication failed. Make sure you are using an App Password, not your regular password.');
-      console.error('⚠️ For Gmail: Go to Google Account → Security → 2-Step Verification → App passwords');
-    } else if (error.message.includes('timeout') || error.message.includes('Connection timeout')) {
-      console.error('⚠️ Connection timeout. This might be a network issue on Render.');
-      console.error('⚠️ The transporter will still be created - verification will happen on first email send.');
-      // Still return transporter even if verification fails
-      const transporter = nodemailer.createTransport({
-        host: host,
-        port: port,
-        secure: secure, // Use secure based on port
-        auth: { user: user, pass: pass },
-        connectionTimeout: 60000,
-        socketTimeout: 60000,
-        greetingTimeout: 30000,
-        tls: { rejectUnauthorized: false, minVersion: 'TLSv1.2' },
-        debug: false,
-        logger: false,
-      });
-      cachedTransporter = transporter;
-      return transporter;
-    }
-    return null;
+    console.error('❌ SendGrid error:', error.message);
+    throw error;
   }
 };
 
-// Send OTP email via nodemailer
+// Send OTP email (SendGrid primary, SMTP fallback)
 export const sendOTPEmail = async (email, otpCode, type = 'registration') => {
   try {
-    let transporter = await getSMTPTransporter();
-    
+    // Try SendGrid first
+    if (isSendGridConfigured()) {
+      try {
+        console.log(`📧 Sending OTP email via SendGrid to: ${email}`);
+        return await sendOTPEmailViaSendGrid(email, otpCode, type);
+      } catch (error) {
+        console.warn('⚠️ SendGrid failed, trying SMTP fallback:', error.message);
+        // Fall through to SMTP
+      }
+    }
+
+    // Fallback to SMTP
+    const transporter = getSMTPTransporter();
     if (!transporter) {
       console.log(`📧 OTP Code for ${email}: ${otpCode}`);
       return { success: false, error: 'Email service not configured', otpCode: otpCode };
@@ -168,65 +186,86 @@ export const sendOTPEmail = async (email, otpCode, type = 'registration') => {
       html: html,
     };
 
-    console.log(`📧 Sending OTP email via nodemailer to: ${email}`);
-    
-    // Retry logic for Render network issues
-    const maxRetries = 2;
-    let lastError = null;
-    
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`📧 Attempt ${attempt}/${maxRetries} to send email...`);
-        
-        // Increased timeout for Render/cloud environments (60 seconds)
-        const info = await Promise.race([
-          transporter.sendMail(mailOptions),
-          new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('SMTP timeout')), 60000)
-          )
-        ]);
-        
-        console.log('✅ Email sent successfully via nodemailer:', info.messageId);
-        return { success: true, messageId: info.messageId };
-      } catch (error) {
-        lastError = error;
-        console.warn(`⚠️ Attempt ${attempt} failed: ${error.message}`);
-        
-        if (attempt < maxRetries) {
-          // Wait before retry (exponential backoff)
-          const waitTime = attempt * 2000; // 2s, 4s
-          console.log(`⏳ Waiting ${waitTime}ms before retry...`);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-          
-          // Create a fresh transporter for retry (connection might be stale)
-          try {
-            cachedTransporter = null; // Clear cache
-            const freshTransporter = await getSMTPTransporter();
-            if (freshTransporter) {
-              transporter = freshTransporter;
-            }
-          } catch (retryError) {
-            console.warn('⚠️ Could not refresh transporter, continuing with existing one');
-          }
-        }
-      }
-    }
-    
-    // All retries failed
-    throw lastError;
+    console.log(`📧 Sending OTP email via SMTP to: ${email}`);
+    const info = await transporter.sendMail(mailOptions);
+    console.log('✅ Email sent successfully via SMTP:', info.messageId);
+    return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error('❌ Error sending email via nodemailer:', error.message);
-    // Log OTP to console for development/debugging
+    console.error('❌ Error sending email:', error.message);
     console.log(`📧 OTP Code for ${email}: ${otpCode}`);
     return { success: false, error: error.message, otpCode: otpCode };
   }
 };
 
-// Send registration confirmation email via nodemailer
+// Send confirmation email via SendGrid
+const sendConfirmationEmailViaSendGrid = async (email, eventName, teamName) => {
+  initializeSendGrid();
+  
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .success-box { background: #d4edda; border: 1px solid #c3e6cb; padding: 15px; border-radius: 8px; margin: 20px 0; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>IEEE RGIPT</h1>
+        </div>
+        <div class="content">
+          <h2>Event Registration Confirmed!</h2>
+          <p>Hello,</p>
+          <div class="success-box">
+            <p><strong>Team:</strong> ${teamName}</p>
+            <p><strong>Event:</strong> ${eventName}</p>
+          </div>
+          <p>Your registration for <strong>${eventName}</strong> has been confirmed successfully!</p>
+          <p>You will receive further instructions and updates via email. Please keep an eye on your inbox.</p>
+          <p>Thank you for participating!</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const msg = {
+    to: email,
+    from: process.env.EMAIL_FROM || 'ieee_sb@rgipt.ac.in',
+    subject: `Registration Confirmed - ${eventName}`,
+    html: html,
+  };
+
+  try {
+    const result = await sgMail.send(msg);
+    return { success: true, messageId: result[0]?.headers['x-message-id'] };
+  } catch (error) {
+    console.error('❌ SendGrid error:', error.message);
+    throw error;
+  }
+};
+
+// Send registration confirmation email (SendGrid primary, SMTP fallback)
 export const sendRegistrationConfirmationEmail = async (email, eventName, teamName) => {
   try {
-    let transporter = await getSMTPTransporter();
-    
+    // Try SendGrid first
+    if (isSendGridConfigured()) {
+      try {
+        console.log(`📧 Sending confirmation email via SendGrid to: ${email}`);
+        return await sendConfirmationEmailViaSendGrid(email, eventName, teamName);
+      } catch (error) {
+        console.warn('⚠️ SendGrid failed, trying SMTP fallback:', error.message);
+        // Fall through to SMTP
+      }
+    }
+
+    // Fallback to SMTP
+    const transporter = getSMTPTransporter();
     if (!transporter) {
       console.log(`📧 Registration confirmation for ${email}: ${eventName} - ${teamName}`);
       return { success: false, error: 'Email service not configured' };
@@ -272,54 +311,11 @@ export const sendRegistrationConfirmationEmail = async (email, eventName, teamNa
       html: html,
     };
 
-    console.log(`📧 Sending registration confirmation email via nodemailer to: ${email}`);
-    
-    // Retry logic for Render network issues
-    const maxRetries = 2;
-    let lastError = null;
-    
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`📧 Attempt ${attempt}/${maxRetries} to send confirmation email...`);
-        
-        // Increased timeout for Render/cloud environments (60 seconds)
-        const info = await Promise.race([
-          transporter.sendMail(mailOptions),
-          new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('SMTP timeout')), 60000)
-          )
-        ]);
-        
-        console.log('✅ Registration confirmation email sent successfully via nodemailer:', info.messageId);
-        return { success: true, messageId: info.messageId };
-      } catch (error) {
-        lastError = error;
-        console.warn(`⚠️ Attempt ${attempt} failed: ${error.message}`);
-        
-        if (attempt < maxRetries) {
-          // Wait before retry (exponential backoff)
-          const waitTime = attempt * 2000; // 2s, 4s
-          console.log(`⏳ Waiting ${waitTime}ms before retry...`);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-          
-          // Create a fresh transporter for retry
-          try {
-            cachedTransporter = null; // Clear cache
-            const freshTransporter = await getSMTPTransporter();
-            if (freshTransporter) {
-              transporter = freshTransporter;
-            }
-          } catch (retryError) {
-            console.warn('⚠️ Could not refresh transporter, continuing with existing one');
-          }
-        }
-      }
-    }
-    
-    // All retries failed
-    throw lastError;
+    console.log(`📧 Sending confirmation email via SMTP to: ${email}`);
+    const info = await transporter.sendMail(mailOptions);
+    return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error('❌ Error sending confirmation email via nodemailer:', error);
+    console.error('❌ Error sending confirmation email:', error);
     return { success: false, error: error.message };
   }
 };
