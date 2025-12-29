@@ -39,23 +39,36 @@ const getSMTPTransporter = async () => {
       pool: true,
       maxConnections: 5,
       maxMessages: 100,
-      // Optimized timeouts for faster response
-      connectionTimeout: 10000, // 10 seconds
-      socketTimeout: 10000, // 10 seconds
-      greetingTimeout: 5000, // 5 seconds
+      // Increased timeouts for Render/cloud environments
+      connectionTimeout: 30000, // 30 seconds (increased for Render)
+      socketTimeout: 30000, // 30 seconds (increased for Render)
+      greetingTimeout: 15000, // 15 seconds (increased for Render)
       // TLS settings optimized for app passwords
       tls: {
         rejectUnauthorized: false,
         minVersion: 'TLSv1.2',
       },
-      // Enable debug for troubleshooting (set to false in production)
-      debug: process.env.NODE_ENV === 'development',
-      logger: process.env.NODE_ENV === 'development',
+      // Enable debug for troubleshooting
+      debug: false, // Disabled to reduce logs on Render
+      logger: false,
     });
 
-    // Verify connection on creation
-    await transporter.verify();
-    console.log('✅ Nodemailer transporter created and verified successfully');
+    // Try to verify connection, but don't fail if it times out (lazy verification)
+    // This allows emails to be sent even if initial verification fails
+    try {
+      await Promise.race([
+        transporter.verify(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Verification timeout')), 20000)
+        )
+      ]);
+      console.log('✅ Nodemailer transporter created and verified successfully');
+    } catch (verifyError) {
+      // Verification failed, but transporter might still work
+      console.log('⚠️ Transporter verification timeout/skipped (will verify on first send)');
+      console.log('📧 Transporter created (lazy verification mode)');
+    }
+    
     console.log('📧 Using App Password authentication (recommended for Gmail)');
     
     // Cache the transporter for reuse
@@ -66,6 +79,27 @@ const getSMTPTransporter = async () => {
     if (error.message.includes('Invalid login')) {
       console.error('⚠️ Authentication failed. Make sure you are using an App Password, not your regular password.');
       console.error('⚠️ For Gmail: Go to Google Account → Security → 2-Step Verification → App passwords');
+    } else if (error.message.includes('timeout') || error.message.includes('Connection timeout')) {
+      console.error('⚠️ Connection timeout. This might be a network issue on Render.');
+      console.error('⚠️ The transporter will still be created - verification will happen on first email send.');
+      // Still return transporter even if verification fails
+      const transporter = nodemailer.createTransport({
+        host: host,
+        port: port,
+        secure: false,
+        auth: { user: user, pass: pass },
+        pool: true,
+        maxConnections: 5,
+        maxMessages: 100,
+        connectionTimeout: 30000,
+        socketTimeout: 30000,
+        greetingTimeout: 15000,
+        tls: { rejectUnauthorized: false, minVersion: 'TLSv1.2' },
+        debug: false,
+        logger: false,
+      });
+      cachedTransporter = transporter;
+      return transporter;
     }
     return null;
   }
@@ -135,11 +169,11 @@ export const sendOTPEmail = async (email, otpCode, type = 'registration') => {
 
     console.log(`📧 Sending OTP email via nodemailer to: ${email}`);
     
-    // Reduced timeout for faster failure detection
+    // Increased timeout for Render/cloud environments
     const info = await Promise.race([
       transporter.sendMail(mailOptions),
       new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('SMTP timeout')), 10000)
+        setTimeout(() => reject(new Error('SMTP timeout')), 30000)
       )
     ]);
     
@@ -205,11 +239,11 @@ export const sendRegistrationConfirmationEmail = async (email, eventName, teamNa
 
     console.log(`📧 Sending registration confirmation email via nodemailer to: ${email}`);
     
-    // Reduced timeout for faster failure detection
+    // Increased timeout for Render/cloud environments
     const info = await Promise.race([
       transporter.sendMail(mailOptions),
       new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('SMTP timeout')), 10000)
+        setTimeout(() => reject(new Error('SMTP timeout')), 30000)
       )
     ]);
     
