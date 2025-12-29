@@ -64,3 +64,5 @@ const clearDatabase = async () => {
 // Run the script
 clearDatabase();
 
+
+

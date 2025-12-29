@@ -221,3 +221,5 @@ router.get('/event/:eventSlug/registrations', authenticate, async (req, res) => 
 
 export default router;
 
+
+

@@ -91,3 +91,5 @@ const EventRegistration = mongoose.model('EventRegistration', eventRegistrationS
 
 export default EventRegistration;
 
+
+

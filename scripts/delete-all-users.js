@@ -46,3 +46,5 @@ const deleteAllUsers = async () => {
 // Run the script
 deleteAllUsers();
 
+
+
