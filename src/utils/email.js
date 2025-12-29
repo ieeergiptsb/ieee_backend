@@ -35,14 +35,14 @@ const getSMTPTransporter = async () => {
         user: user,
         pass: pass, // Use Gmail App Password here for best performance
       },
-      // Connection pooling for faster delivery (reuses connections)
-      pool: true,
-      maxConnections: 5,
-      maxMessages: 100,
+      // Disable connection pooling on Render (can cause timeout issues)
+      // pool: true,
+      // maxConnections: 5,
+      // maxMessages: 100,
       // Increased timeouts for Render/cloud environments
-      connectionTimeout: 30000, // 30 seconds (increased for Render)
-      socketTimeout: 30000, // 30 seconds (increased for Render)
-      greetingTimeout: 15000, // 15 seconds (increased for Render)
+      connectionTimeout: 60000, // 60 seconds (increased for Render network issues)
+      socketTimeout: 60000, // 60 seconds (increased for Render network issues)
+      greetingTimeout: 30000, // 30 seconds (increased for Render network issues)
       // TLS settings optimized for app passwords
       tls: {
         rejectUnauthorized: false,
@@ -108,7 +108,7 @@ const getSMTPTransporter = async () => {
 // Send OTP email via nodemailer
 export const sendOTPEmail = async (email, otpCode, type = 'registration') => {
   try {
-    const transporter = await getSMTPTransporter();
+    let transporter = await getSMTPTransporter();
     
     if (!transporter) {
       console.log(`📧 OTP Code for ${email}: ${otpCode}`);
@@ -169,16 +169,50 @@ export const sendOTPEmail = async (email, otpCode, type = 'registration') => {
 
     console.log(`📧 Sending OTP email via nodemailer to: ${email}`);
     
-    // Increased timeout for Render/cloud environments
-    const info = await Promise.race([
-      transporter.sendMail(mailOptions),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('SMTP timeout')), 30000)
-      )
-    ]);
+    // Retry logic for Render network issues
+    const maxRetries = 2;
+    let lastError = null;
     
-    console.log('✅ Email sent successfully via nodemailer:', info.messageId);
-    return { success: true, messageId: info.messageId };
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`📧 Attempt ${attempt}/${maxRetries} to send email...`);
+        
+        // Increased timeout for Render/cloud environments (60 seconds)
+        const info = await Promise.race([
+          transporter.sendMail(mailOptions),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('SMTP timeout')), 60000)
+          )
+        ]);
+        
+        console.log('✅ Email sent successfully via nodemailer:', info.messageId);
+        return { success: true, messageId: info.messageId };
+      } catch (error) {
+        lastError = error;
+        console.warn(`⚠️ Attempt ${attempt} failed: ${error.message}`);
+        
+        if (attempt < maxRetries) {
+          // Wait before retry (exponential backoff)
+          const waitTime = attempt * 2000; // 2s, 4s
+          console.log(`⏳ Waiting ${waitTime}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          
+          // Create a fresh transporter for retry (connection might be stale)
+          try {
+            cachedTransporter = null; // Clear cache
+            const freshTransporter = await getSMTPTransporter();
+            if (freshTransporter) {
+              transporter = freshTransporter;
+            }
+          } catch (retryError) {
+            console.warn('⚠️ Could not refresh transporter, continuing with existing one');
+          }
+        }
+      }
+    }
+    
+    // All retries failed
+    throw lastError;
   } catch (error) {
     console.error('❌ Error sending email via nodemailer:', error.message);
     // Log OTP to console for development/debugging
@@ -190,7 +224,7 @@ export const sendOTPEmail = async (email, otpCode, type = 'registration') => {
 // Send registration confirmation email via nodemailer
 export const sendRegistrationConfirmationEmail = async (email, eventName, teamName) => {
   try {
-    const transporter = await getSMTPTransporter();
+    let transporter = await getSMTPTransporter();
     
     if (!transporter) {
       console.log(`📧 Registration confirmation for ${email}: ${eventName} - ${teamName}`);
@@ -239,16 +273,50 @@ export const sendRegistrationConfirmationEmail = async (email, eventName, teamNa
 
     console.log(`📧 Sending registration confirmation email via nodemailer to: ${email}`);
     
-    // Increased timeout for Render/cloud environments
-    const info = await Promise.race([
-      transporter.sendMail(mailOptions),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('SMTP timeout')), 30000)
-      )
-    ]);
+    // Retry logic for Render network issues
+    const maxRetries = 2;
+    let lastError = null;
     
-    console.log('✅ Registration confirmation email sent successfully via nodemailer:', info.messageId);
-    return { success: true, messageId: info.messageId };
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`📧 Attempt ${attempt}/${maxRetries} to send confirmation email...`);
+        
+        // Increased timeout for Render/cloud environments (60 seconds)
+        const info = await Promise.race([
+          transporter.sendMail(mailOptions),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('SMTP timeout')), 60000)
+          )
+        ]);
+        
+        console.log('✅ Registration confirmation email sent successfully via nodemailer:', info.messageId);
+        return { success: true, messageId: info.messageId };
+      } catch (error) {
+        lastError = error;
+        console.warn(`⚠️ Attempt ${attempt} failed: ${error.message}`);
+        
+        if (attempt < maxRetries) {
+          // Wait before retry (exponential backoff)
+          const waitTime = attempt * 2000; // 2s, 4s
+          console.log(`⏳ Waiting ${waitTime}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          
+          // Create a fresh transporter for retry
+          try {
+            cachedTransporter = null; // Clear cache
+            const freshTransporter = await getSMTPTransporter();
+            if (freshTransporter) {
+              transporter = freshTransporter;
+            }
+          } catch (retryError) {
+            console.warn('⚠️ Could not refresh transporter, continuing with existing one');
+          }
+        }
+      }
+    }
+    
+    // All retries failed
+    throw lastError;
   } catch (error) {
     console.error('❌ Error sending confirmation email via nodemailer:', error);
     return { success: false, error: error.message };
