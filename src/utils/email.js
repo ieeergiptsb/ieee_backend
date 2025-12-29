@@ -13,10 +13,14 @@ const getSMTPTransporter = async () => {
   const port = parseInt(process.env.EMAIL_PORT || '587');
   const user = process.env.EMAIL_USER;
   const pass = process.env.EMAIL_PASS;
+  
+  // Automatically set secure based on port (465 = SSL, 587 = TLS)
+  const secure = port === 465;
 
   console.log('📧 Nodemailer SMTP Config:', { 
     host, 
     port, 
+    secure,
     user: user ? `${user.substring(0, 5)}***` : 'NOT SET',
     pass: pass ? '***SET***' : 'NOT SET'
   });
@@ -30,7 +34,7 @@ const getSMTPTransporter = async () => {
     const transporter = nodemailer.createTransport({
       host: host,
       port: port,
-      secure: false, // true for 465, false for other ports
+      secure: secure, // true for 465 (SSL), false for 587 (TLS)
       auth: {
         user: user,
         pass: pass, // Use Gmail App Password here for best performance
@@ -86,14 +90,11 @@ const getSMTPTransporter = async () => {
       const transporter = nodemailer.createTransport({
         host: host,
         port: port,
-        secure: false,
+        secure: secure, // Use secure based on port
         auth: { user: user, pass: pass },
-        pool: true,
-        maxConnections: 5,
-        maxMessages: 100,
-        connectionTimeout: 30000,
-        socketTimeout: 30000,
-        greetingTimeout: 15000,
+        connectionTimeout: 60000,
+        socketTimeout: 60000,
+        greetingTimeout: 30000,
         tls: { rejectUnauthorized: false, minVersion: 'TLSv1.2' },
         debug: false,
         logger: false,
