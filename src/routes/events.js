@@ -73,14 +73,18 @@ router.post('/register', authenticate, registrationValidation, async (req, res) 
 
     // Populate user data for email
     const registrationWithUser = await EventRegistration.findById(registration._id)
-      .populate('user_id', 'email full_name');
+      .populate('user_id', 'email full_name profile_image_url college roll_no');
 
-    // Send confirmation email
+    // Send confirmation email with ID card
     if (registrationWithUser.user_id?.email) {
       await sendRegistrationConfirmationEmail(
         registrationWithUser.user_id.email,
         event_name,
-        team_name
+        team_name,
+        registrationWithUser.user_id.full_name,
+        registrationWithUser.user_id.profile_image_url,
+        registrationWithUser.user_id.college,
+        registrationWithUser.user_id.roll_no
       );
     }
 
@@ -220,6 +224,7 @@ router.get('/event/:eventSlug/registrations', authenticate, async (req, res) => 
 });
 
 export default router;
+
 
 
 

@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import sgMail from '@sendgrid/mail';
+import { generateIDCard } from './idCardGenerator.js';
 
 // Check if SendGrid is configured
 const isSendGridConfigured = () => {
@@ -198,7 +199,7 @@ export const sendOTPEmail = async (email, otpCode, type = 'registration') => {
 };
 
 // Send confirmation email via SendGrid
-const sendConfirmationEmailViaSendGrid = async (email, eventName, teamName) => {
+const sendConfirmationEmailViaSendGrid = async (email, eventName, teamName, userName, userPhoto, userCollege, userRollNo) => {
   initializeSendGrid();
   
   const html = `
@@ -211,6 +212,7 @@ const sendConfirmationEmailViaSendGrid = async (email, eventName, teamName) => {
         .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
         .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
         .success-box { background: #d4edda; border: 1px solid #c3e6cb; padding: 15px; border-radius: 8px; margin: 20px 0; }
+        .id-card-notice { background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin: 20px 0; }
       </style>
     </head>
     <body>
@@ -220,12 +222,16 @@ const sendConfirmationEmailViaSendGrid = async (email, eventName, teamName) => {
         </div>
         <div class="content">
           <h2>Event Registration Confirmed!</h2>
-          <p>Hello,</p>
+          <p>Hello ${userName || 'there'},</p>
           <div class="success-box">
             <p><strong>Team:</strong> ${teamName}</p>
             <p><strong>Event:</strong> ${eventName}</p>
           </div>
           <p>Your registration for <strong>${eventName}</strong> has been confirmed successfully!</p>
+          <div class="id-card-notice">
+            <p><strong>📋 Your Event ID Card</strong></p>
+            <p>Please find your official event ID card attached to this email. You can print it or show it on your mobile device at the event venue.</p>
+          </div>
           <p>You will receive further instructions and updates via email. Please keep an eye on your inbox.</p>
           <p>Thank you for participating!</p>
         </div>
@@ -234,12 +240,41 @@ const sendConfirmationEmailViaSendGrid = async (email, eventName, teamName) => {
     </html>
   `;
 
+  // Generate ID card
+  let idCardBuffer = null;
+  try {
+    idCardBuffer = await generateIDCard({
+      userName: userName || 'Participant',
+      userPhoto: userPhoto,
+      teamName: teamName,
+      eventName: eventName,
+      userCollege: userCollege,
+      userRollNo: userRollNo,
+    });
+    console.log('✅ ID card generated successfully');
+  } catch (error) {
+    console.error('⚠️ Failed to generate ID card:', error.message);
+    // Continue without ID card if generation fails
+  }
+
   const msg = {
     to: email,
     from: process.env.EMAIL_FROM || 'ieee_sb@rgipt.ac.in',
     subject: `Registration Confirmed - ${eventName}`,
     html: html,
   };
+
+  // Attach ID card if generated
+  if (idCardBuffer) {
+    msg.attachments = [
+      {
+        content: idCardBuffer.toString('base64'),
+        filename: `ID_Card_${eventName.replace(/[^a-z0-9]/gi, '_')}_${teamName.replace(/[^a-z0-9]/gi, '_')}.png`,
+        type: 'image/png',
+        disposition: 'attachment',
+      },
+    ];
+  }
 
   try {
     const result = await sgMail.send(msg);
@@ -251,13 +286,13 @@ const sendConfirmationEmailViaSendGrid = async (email, eventName, teamName) => {
 };
 
 // Send registration confirmation email (SendGrid primary, SMTP fallback)
-export const sendRegistrationConfirmationEmail = async (email, eventName, teamName) => {
+export const sendRegistrationConfirmationEmail = async (email, eventName, teamName, userName = null, userPhoto = null, userCollege = null, userRollNo = null) => {
   try {
     // Try SendGrid first
     if (isSendGridConfigured()) {
       try {
         console.log(`📧 Sending confirmation email via SendGrid to: ${email}`);
-        return await sendConfirmationEmailViaSendGrid(email, eventName, teamName);
+        return await sendConfirmationEmailViaSendGrid(email, eventName, teamName, userName, userPhoto, userCollege, userRollNo);
       } catch (error) {
         console.warn('⚠️ SendGrid failed, trying SMTP fallback:', error.message);
         // Fall through to SMTP
@@ -271,6 +306,23 @@ export const sendRegistrationConfirmationEmail = async (email, eventName, teamNa
       return { success: false, error: 'Email service not configured' };
     }
 
+    // Generate ID card
+    let idCardBuffer = null;
+    try {
+      idCardBuffer = await generateIDCard({
+        userName: userName || 'Participant',
+        userPhoto: userPhoto,
+        teamName: teamName,
+        eventName: eventName,
+        userCollege: userCollege,
+        userRollNo: userRollNo,
+      });
+      console.log('✅ ID card generated successfully');
+    } catch (error) {
+      console.error('⚠️ Failed to generate ID card:', error.message);
+      // Continue without ID card if generation fails
+    }
+
     const html = `
       <!DOCTYPE html>
       <html>
@@ -281,6 +333,7 @@ export const sendRegistrationConfirmationEmail = async (email, eventName, teamNa
           .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
           .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
           .success-box { background: #d4edda; border: 1px solid #c3e6cb; padding: 15px; border-radius: 8px; margin: 20px 0; }
+          .id-card-notice { background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin: 20px 0; }
         </style>
       </head>
       <body>
@@ -290,12 +343,18 @@ export const sendRegistrationConfirmationEmail = async (email, eventName, teamNa
           </div>
           <div class="content">
             <h2>Event Registration Confirmed!</h2>
-            <p>Hello,</p>
+            <p>Hello ${userName || 'there'},</p>
             <div class="success-box">
               <p><strong>Team:</strong> ${teamName}</p>
               <p><strong>Event:</strong> ${eventName}</p>
             </div>
             <p>Your registration for <strong>${eventName}</strong> has been confirmed successfully!</p>
+            ${idCardBuffer ? `
+            <div class="id-card-notice">
+              <p><strong>📋 Your Event ID Card</strong></p>
+              <p>Please find your official event ID card attached to this email. You can print it or show it on your mobile device at the event venue.</p>
+            </div>
+            ` : ''}
             <p>You will receive further instructions and updates via email. Please keep an eye on your inbox.</p>
             <p>Thank you for participating!</p>
           </div>
@@ -310,6 +369,16 @@ export const sendRegistrationConfirmationEmail = async (email, eventName, teamNa
       subject: `Registration Confirmed - ${eventName}`,
       html: html,
     };
+
+    // Attach ID card if generated
+    if (idCardBuffer) {
+      mailOptions.attachments = [
+        {
+          filename: `ID_Card_${eventName.replace(/[^a-z0-9]/gi, '_')}_${teamName.replace(/[^a-z0-9]/gi, '_')}.png`,
+          content: idCardBuffer,
+        },
+      ];
+    }
 
     console.log(`📧 Sending confirmation email via SMTP to: ${email}`);
     const info = await transporter.sendMail(mailOptions);
