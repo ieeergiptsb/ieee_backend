@@ -64,6 +64,13 @@ const userSchema = new mongoose.Schema({
     default: null,
     trim: true,
   },
+  ieee_membership_id: {
+    type: String,
+    default: null,
+    trim: true,
+    unique: true,
+    sparse: true, // Allow null values but ensure uniqueness when present
+  },
   role: {
     type: String,
     enum: ['user', 'admin'],
@@ -78,6 +85,14 @@ const userSchema = new mongoose.Schema({
     default: null,
   },
   otp_expires_at: {
+    type: Date,
+    default: null,
+  },
+  reset_token: {
+    type: String,
+    default: null,
+  },
+  reset_token_expires_at: {
     type: Date,
     default: null,
   },
@@ -162,18 +177,62 @@ userSchema.methods.verifyOTP = function(otp) {
   return this.otp_code === otp;
 };
 
+// Method to generate password reset token
+userSchema.methods.generateResetToken = function() {
+  const crypto = require('crypto');
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  this.reset_token = resetToken;
+  this.reset_token_expires_at = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+  return resetToken;
+};
+
+// Method to verify reset token
+userSchema.methods.verifyResetToken = function(token) {
+  if (!this.reset_token || !this.reset_token_expires_at) {
+    return false;
+  }
+  
+  if (this.reset_token_expires_at < new Date()) {
+    return false; // Token expired
+  }
+  
+  return this.reset_token === token;
+};
+
+// Method to generate IEEE membership ID
+userSchema.methods.generateIEEEMembershipID = async function() {
+  const year = new Date().getFullYear();
+  const randomNum = Math.floor(10000 + Math.random() * 90000); // 5-digit random number
+  const membershipID = `IEEE-${year}-${randomNum}`;
+  
+  // Check if ID already exists (very unlikely but check anyway)
+  const User = this.constructor;
+  const existing = await User.findOne({ ieee_membership_id: membershipID });
+  if (existing) {
+    // If exists, generate a new one recursively (very rare case)
+    return await this.generateIEEEMembershipID();
+  }
+  
+  this.ieee_membership_id = membershipID;
+  return membershipID;
+};
+
 // Remove sensitive data from JSON output
 userSchema.methods.toJSON = function() {
   const obj = this.toObject();
   delete obj.password;
   delete obj.otp_code;
   delete obj.otp_expires_at;
+  delete obj.reset_token;
+  delete obj.reset_token_expires_at;
   return obj;
 };
 
 const User = mongoose.model('User', userSchema);
 
 export default User;
+
+
 
 
 

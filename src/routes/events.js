@@ -73,7 +73,7 @@ router.post('/register', authenticate, registrationValidation, async (req, res) 
 
     // Populate user data for email
     const registrationWithUser = await EventRegistration.findById(registration._id)
-      .populate('user_id', 'email full_name profile_image_url college roll_no');
+      .populate('user_id', 'email full_name profile_image_url college roll_no membership_type ieee_membership_id');
 
     // Send confirmation email with ID card
     if (registrationWithUser.user_id?.email) {
@@ -84,7 +84,9 @@ router.post('/register', authenticate, registrationValidation, async (req, res) 
         registrationWithUser.user_id.full_name,
         registrationWithUser.user_id.profile_image_url,
         registrationWithUser.user_id.college,
-        registrationWithUser.user_id.roll_no
+        registrationWithUser.user_id.roll_no,
+        registrationWithUser.user_id.membership_type,
+        registrationWithUser.user_id.ieee_membership_id
       );
     }
 

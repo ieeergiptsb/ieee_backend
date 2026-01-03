@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth.js';
 import EventRegistration from '../models/EventRegistration.js';
 import User from '../models/User.js';
 import { uploadProfilePicture } from '../middleware/upload.js';
+import { generateIDCard } from '../utils/idCardGenerator.js';
 
 const router = express.Router();
 
@@ -98,6 +99,47 @@ router.put('/profile', authenticate, uploadProfilePicture, async (req, res) => {
     res.status(500).json({ 
       success: false, 
       error: error.message || 'Failed to update profile' 
+    });
+  }
+});
+
+// Generate and return member ID card
+router.get('/id-card', authenticate, async (req, res) => {
+  try {
+    const userId = req.userId;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'User not found' 
+      });
+    }
+
+    // Generate ID card with member information
+    const idCardBuffer = await generateIDCard({
+      userName: user.full_name || 'Member',
+      userPhoto: user.profile_image_url,
+      teamName: user.membership_type === 'ieee_member' ? 'IEEE Member' : 'Member',
+      eventName: 'IEEE Student Branch, RGIPT', // Organization name
+      userCollege: user.college || '',
+      userRollNo: user.roll_no || '',
+      membershipType: user.membership_type || 'non_member',
+      ieeeMembershipId: user.ieee_membership_id || null,
+    });
+
+    // Set response headers for image
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Content-Disposition', 'inline; filename="ieee_member_id_card.png"');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    
+    // Send the image buffer
+    res.send(idCardBuffer);
+  } catch (error) {
+    console.error('ID card generation error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to generate ID card' 
     });
   }
 });

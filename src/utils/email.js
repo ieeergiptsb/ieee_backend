@@ -199,7 +199,7 @@ export const sendOTPEmail = async (email, otpCode, type = 'registration') => {
 };
 
 // Send confirmation email via SendGrid
-const sendConfirmationEmailViaSendGrid = async (email, eventName, teamName, userName, userPhoto, userCollege, userRollNo) => {
+const sendConfirmationEmailViaSendGrid = async (email, eventName, teamName, userName, userPhoto, userCollege, userRollNo, membershipType, ieeeMembershipId) => {
   initializeSendGrid();
   
   const html = `
@@ -250,6 +250,8 @@ const sendConfirmationEmailViaSendGrid = async (email, eventName, teamName, user
       eventName: eventName,
       userCollege: userCollege,
       userRollNo: userRollNo,
+      membershipType: membershipType || 'non_member',
+      ieeeMembershipId: ieeeMembershipId || null,
     });
     console.log('✅ ID card generated successfully');
   } catch (error) {
@@ -286,13 +288,13 @@ const sendConfirmationEmailViaSendGrid = async (email, eventName, teamName, user
 };
 
 // Send registration confirmation email (SendGrid primary, SMTP fallback)
-export const sendRegistrationConfirmationEmail = async (email, eventName, teamName, userName = null, userPhoto = null, userCollege = null, userRollNo = null) => {
+export const sendRegistrationConfirmationEmail = async (email, eventName, teamName, userName = null, userPhoto = null, userCollege = null, userRollNo = null, membershipType = null, ieeeMembershipId = null) => {
   try {
     // Try SendGrid first
     if (isSendGridConfigured()) {
       try {
         console.log(`📧 Sending confirmation email via SendGrid to: ${email}`);
-        return await sendConfirmationEmailViaSendGrid(email, eventName, teamName, userName, userPhoto, userCollege, userRollNo);
+        return await sendConfirmationEmailViaSendGrid(email, eventName, teamName, userName, userPhoto, userCollege, userRollNo, membershipType, ieeeMembershipId);
       } catch (error) {
         console.warn('⚠️ SendGrid failed, trying SMTP fallback:', error.message);
         // Fall through to SMTP
@@ -316,6 +318,8 @@ export const sendRegistrationConfirmationEmail = async (email, eventName, teamNa
         eventName: eventName,
         userCollege: userCollege,
         userRollNo: userRollNo,
+        membershipType: membershipType || 'non_member',
+        ieeeMembershipId: ieeeMembershipId || null,
       });
       console.log('✅ ID card generated successfully');
     } catch (error) {
@@ -385,6 +389,160 @@ export const sendRegistrationConfirmationEmail = async (email, eventName, teamNa
     return { success: true, messageId: info.messageId };
   } catch (error) {
     console.error('❌ Error sending confirmation email:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Send password reset email via SendGrid
+const sendPasswordResetEmailViaSendGrid = async (email, resetToken, resetUrl) => {
+  initializeSendGrid();
+  
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .button { display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+        .warning-box { background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin: 20px 0; }
+        .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>IEEE RGIPT</h1>
+        </div>
+        <div class="content">
+          <h2>Password Reset Request</h2>
+          <p>Hello,</p>
+          <p>We received a request to reset your password for your IEEE RGIPT account.</p>
+          <p>Click the button below to reset your password:</p>
+          <div style="text-align: center;">
+            <a href="${resetUrl}" class="button">Reset Password</a>
+          </div>
+          <p>Or copy and paste this link into your browser:</p>
+          <p style="word-break: break-all; color: #667eea;">${resetUrl}</p>
+          <div class="warning-box">
+            <p><strong>⚠️ Important:</strong></p>
+            <ul>
+              <li>This link will expire in <strong>1 hour</strong></li>
+              <li>If you didn't request this password reset, please ignore this email</li>
+              <li>Your password will remain unchanged if you don't click the link</li>
+            </ul>
+          </div>
+          <p>For security reasons, never share this link with anyone.</p>
+        </div>
+        <div class="footer">
+          <p>© 2025 IEEE Student Branch, RGIPT. All rights reserved.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const msg = {
+    to: email,
+    from: process.env.EMAIL_FROM || 'ieee_sb@rgipt.ac.in',
+    subject: 'IEEE RGIPT - Password Reset Request',
+    html: html,
+  };
+
+  try {
+    const result = await sgMail.send(msg);
+    return { success: true, messageId: result[0]?.headers['x-message-id'] };
+  } catch (error) {
+    console.error('❌ SendGrid error:', error.message);
+    throw error;
+  }
+};
+
+// Send password reset email (SendGrid primary, SMTP fallback)
+export const sendPasswordResetEmail = async (email, resetToken) => {
+  try {
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
+
+    // Try SendGrid first
+    if (isSendGridConfigured()) {
+      try {
+        console.log(`📧 Sending password reset email via SendGrid to: ${email}`);
+        return await sendPasswordResetEmailViaSendGrid(email, resetToken, resetUrl);
+      } catch (error) {
+        console.warn('⚠️ SendGrid failed, trying SMTP fallback:', error.message);
+        // Fall through to SMTP
+      }
+    }
+
+    // Fallback to SMTP
+    const transporter = getSMTPTransporter();
+    if (!transporter) {
+      console.log(`📧 Password reset requested for ${email}`);
+      return { success: false, error: 'Email service not configured' };
+    }
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .button { display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+          .warning-box { background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin: 20px 0; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>IEEE RGIPT</h1>
+          </div>
+          <div class="content">
+            <h2>Password Reset Request</h2>
+            <p>Hello,</p>
+            <p>We received a request to reset your password for your IEEE RGIPT account.</p>
+            <p>Click the button below to reset your password:</p>
+            <div style="text-align: center;">
+              <a href="${resetUrl}" class="button">Reset Password</a>
+            </div>
+            <p>Or copy and paste this link into your browser:</p>
+            <p style="word-break: break-all; color: #667eea;">${resetUrl}</p>
+            <div class="warning-box">
+              <p><strong>⚠️ Important:</strong></p>
+              <ul>
+                <li>This link will expire in <strong>1 hour</strong></li>
+                <li>If you didn't request this password reset, please ignore this email</li>
+                <li>Your password will remain unchanged if you don't click the link</li>
+              </ul>
+            </div>
+            <p>For security reasons, never share this link with anyone.</p>
+          </div>
+          <div class="footer">
+            <p>© 2025 IEEE Student Branch, RGIPT. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const mailOptions = {
+      from: `"IEEE RGIPT" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'IEEE RGIPT - Password Reset Request',
+      html: html,
+    };
+
+    console.log(`📧 Sending password reset email via SMTP to: ${email}`);
+    const info = await transporter.sendMail(mailOptions);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('❌ Error sending password reset email:', error);
     return { success: false, error: error.message };
   }
 };

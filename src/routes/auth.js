@@ -2,11 +2,29 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import User from '../models/User.js';
 import { generateToken } from '../utils/jwt.js';
-import { sendOTPEmail } from '../utils/email.js';
+import { sendOTPEmail, sendPasswordResetEmail } from '../utils/email.js';
 import { authenticate } from '../middleware/auth.js';
 import { uploadProfilePicture } from '../middleware/upload.js';
 
 const router = express.Router();
+
+// Authorized emails for IEEE member registration with their designations
+const AUTHORIZED_IEEE_MEMBER_EMAILS = {
+  '24it3056@rgipt.ac.in': 'CS_Cohead',
+  // Add more authorized emails here as needed
+  // Format: 'email@domain.com': 'Designation'
+};
+
+// Normalize email for comparison (handles Gmail dots)
+const normalizeEmailForComparison = (email) => {
+  if (!email) return '';
+  let normalized = email.toLowerCase().trim();
+  if (normalized.includes('@gmail.com')) {
+    const [localPart, domain] = normalized.split('@');
+    normalized = localPart.replace(/\./g, '') + '@' + domain;
+  }
+  return normalized;
+};
 
 // Validation middleware
 const registerValidation = [
@@ -104,8 +122,32 @@ router.post('/register/initiate', uploadProfilePicture, registerValidation, asyn
         existingUser.year = year;
         existingUser.roll_no = roll_no;
         existingUser.password = password;
+        // Validate IEEE member registration for existing users too
+        if (membership_type === 'ieee_member') {
+          const normalizedForCheck = normalizeEmailForComparison(normalizedEmail);
+          const authorizedEmail = Object.keys(AUTHORIZED_IEEE_MEMBER_EMAILS).find(
+            authEmail => normalizeEmailForComparison(authEmail) === normalizedForCheck
+          );
+          
+          if (!authorizedEmail) {
+            return res.status(403).json({ 
+              success: false, 
+              error: 'Only authorized emails can register as IEEE members. Please contact admin for authorization or register as a non-member.' 
+            });
+          }
+          
+          // Set designation for authorized IEEE members
+          existingUser.designation = AUTHORIZED_IEEE_MEMBER_EMAILS[authorizedEmail];
+        }
+        
         existingUser.membership_type = membership_type;
         existingUser.membership_code = membership_type === 'ieee_member' ? membership_code : null;
+        
+        // Generate IEEE membership ID for IEEE members if they don't have one
+        if (membership_type === 'ieee_member' && !existingUser.ieee_membership_id) {
+          await existingUser.generateIEEEMembershipID();
+        }
+        
         if (profileImageUrl) {
           existingUser.profile_image_url = profileImageUrl;
         }
@@ -131,18 +173,40 @@ router.post('/register/initiate', uploadProfilePicture, registerValidation, asyn
       }
     }
 
-    // Validate membership code for IEEE members
-    if (membership_type === 'ieee_member' && !membership_code) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Membership code is required for IEEE members' 
-      });
-    }
+    // Note: IEEE membership ID will be auto-generated on the backend
+    // membership_code is optional (only for users who already have an existing code)
 
     // normalizedEmail already declared above, just ensure Gmail dots are removed
     if (normalizedEmail.includes('@gmail.com') && normalizedEmail.includes('.')) {
       const [localPart, domain] = normalizedEmail.split('@');
       normalizedEmail = localPart.replace(/\./g, '') + '@' + domain;
+    }
+    
+    // Validate IEEE member registration - check if email is authorized
+    if (membership_type === 'ieee_member') {
+      const normalizedForCheck = normalizeEmailForComparison(normalizedEmail);
+      const authorizedEmail = Object.keys(AUTHORIZED_IEEE_MEMBER_EMAILS).find(
+        authEmail => normalizeEmailForComparison(authEmail) === normalizedForCheck
+      );
+      
+      if (!authorizedEmail) {
+        return res.status(403).json({ 
+          success: false, 
+          error: 'Only authorized emails can register as IEEE members. Please contact admin for authorization or register as a non-member.' 
+        });
+      }
+    }
+    
+    // Get designation for authorized IEEE members
+    let userDesignation = '';
+    if (membership_type === 'ieee_member') {
+      const normalizedForCheck = normalizeEmailForComparison(normalizedEmail);
+      const authorizedEmail = Object.keys(AUTHORIZED_IEEE_MEMBER_EMAILS).find(
+        authEmail => normalizeEmailForComparison(authEmail) === normalizedForCheck
+      );
+      if (authorizedEmail) {
+        userDesignation = AUTHORIZED_IEEE_MEMBER_EMAILS[authorizedEmail];
+      }
     }
     
     // Create new user
@@ -158,9 +222,15 @@ router.post('/register/initiate', uploadProfilePicture, registerValidation, asyn
       password,
       membership_type,
       membership_code: membership_type === 'ieee_member' ? membership_code : null,
+      designation: userDesignation, // Set designation for authorized IEEE members
       role: 'user',
       profile_image_url: profileImageUrl,
     });
+
+    // Generate IEEE membership ID for IEEE members
+    if (membership_type === 'ieee_member') {
+      await user.generateIEEEMembershipID();
+    }
 
     // Generate and save OTP
     const otp = user.generateOTP();
@@ -537,6 +607,142 @@ router.post('/refresh', authenticate, async (req, res) => {
     res.status(500).json({ 
       success: false, 
       error: error.message || 'Failed to refresh token' 
+    });
+  }
+});
+
+// Forgot Password - Request password reset
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Email is required' 
+      });
+    }
+
+    // Normalize email: for Gmail, remove dots (Gmail treats dots as same)
+    let normalizedEmail = email.toLowerCase().trim();
+    if (normalizedEmail.includes('@gmail.com')) {
+      const [localPart, domain] = normalizedEmail.split('@');
+      normalizedEmail = localPart.replace(/\./g, '') + '@' + domain;
+    }
+
+    // Find user
+    const user = await User.findOne({ email: normalizedEmail });
+
+    // Always return success to prevent email enumeration
+    if (!user) {
+      return res.json({
+        success: true,
+        message: 'If an account with that email exists, a password reset link has been sent.',
+      });
+    }
+
+    // Check if email is verified
+    if (!user.is_email_verified) {
+      return res.json({
+        success: true,
+        message: 'If an account with that email exists, a password reset link has been sent.',
+      });
+    }
+
+    // Generate reset token
+    const resetToken = user.generateResetToken();
+    await user.save();
+
+    // Send password reset email
+    const emailResult = await sendPasswordResetEmail(normalizedEmail, resetToken);
+
+    if (!emailResult.success) {
+      // Clear the reset token if email failed
+      user.reset_token = null;
+      user.reset_token_expires_at = null;
+      await user.save();
+      
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Failed to send password reset email. Please try again later.' 
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'If an account with that email exists, a password reset link has been sent.',
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to process password reset request' 
+    });
+  }
+});
+
+// Reset Password - Verify token and update password
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { email, token, new_password } = req.body;
+
+    if (!email || !token || !new_password) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Email, token, and new password are required' 
+      });
+    }
+
+    if (new_password.length < 6) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Password must be at least 6 characters' 
+      });
+    }
+
+    // Normalize email: for Gmail, remove dots (Gmail treats dots as same)
+    let normalizedEmail = email.toLowerCase().trim();
+    if (normalizedEmail.includes('@gmail.com')) {
+      const [localPart, domain] = normalizedEmail.split('@');
+      normalizedEmail = localPart.replace(/\./g, '') + '@' + domain;
+    }
+
+    // Find user with reset token
+    const user = await User.findOne({ 
+      email: normalizedEmail,
+      reset_token: token 
+    }).select('+password');
+
+    if (!user) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid or expired reset token' 
+      });
+    }
+
+    // Verify reset token
+    if (!user.verifyResetToken(token)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid or expired reset token' 
+      });
+    }
+
+    // Update password
+    user.password = new_password;
+    user.reset_token = null;
+    user.reset_token_expires_at = null;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Password has been reset successfully. You can now login with your new password.',
+    });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to reset password' 
     });
   }
 });
