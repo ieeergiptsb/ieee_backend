@@ -2,6 +2,8 @@ import { createCanvas, loadImage } from 'canvas';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import https from 'https';
+import http from 'http';
 
 // Get the directory of the current module
 const __filename = fileURLToPath(import.meta.url);
@@ -9,6 +11,26 @@ const __dirname = path.dirname(__filename);
 
 // Get project root (go up from backend/src/utils to project root)
 const projectRoot = path.resolve(__dirname, '../../../');
+
+// Get frontend URL from environment variable
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+// Helper function to fetch image from URL
+const fetchImageFromUrl = (url) => {
+  return new Promise((resolve, reject) => {
+    const protocol = url.startsWith('https') ? https : http;
+    protocol.get(url, (response) => {
+      if (response.statusCode !== 200) {
+        reject(new Error(`Failed to fetch image: ${response.statusCode}`));
+        return;
+      }
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(chunk));
+      response.on('end', () => resolve(Buffer.concat(chunks)));
+      response.on('error', reject);
+    }).on('error', reject);
+  });
+};
 
 /**
  * Generate an ID card image for event registration using template image
@@ -65,19 +87,36 @@ export async function generateIDCard({ userName, userPhoto, teamName, eventName,
   let width, height;
   
   try {
+    // Try loading from local file system first
     if (templatePath && fs.existsSync(templatePath)) {
-      console.log('📷 Loading template from:', templatePath);
+      console.log('📷 Loading template from local file:', templatePath);
       templateImage = await loadImage(templatePath);
       width = templateImage.width;
       height = templateImage.height;
-      console.log(`✅ Template loaded successfully: ${width}x${height}`);
+      console.log(`✅ Template loaded successfully from local: ${width}x${height}`);
     } else {
-      throw new Error(`Template not found at: ${templatePath || 'no path determined'}`);
+      // If local file doesn't exist, try fetching from frontend URL (for deployed environments)
+      const imageFileName = isMemberCard ? 'member_id.png' : 'id.png';
+      const frontendImageUrl = `${FRONTEND_URL}/images/${imageFileName}`;
+      
+      console.log('📷 Local template not found, trying to fetch from frontend:', frontendImageUrl);
+      
+      try {
+        const imageBuffer = await fetchImageFromUrl(frontendImageUrl);
+        templateImage = await loadImage(imageBuffer);
+        width = templateImage.width;
+        height = templateImage.height;
+        console.log(`✅ Template loaded successfully from frontend URL: ${width}x${height}`);
+      } catch (urlError) {
+        console.error('❌ Failed to fetch template from frontend URL:', urlError.message);
+        throw new Error(`Template not found locally and failed to fetch from ${frontendImageUrl}`);
+      }
     }
   } catch (error) {
     console.error('❌ Error loading template image:', error.message);
     console.error('   Template path was:', templatePath);
     console.error('   Is member card:', isMemberCard);
+    console.error('   Frontend URL:', FRONTEND_URL);
     // Fallback dimensions for vertical card
     width = 1012; 
     height = 1431; 

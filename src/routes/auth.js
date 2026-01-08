@@ -10,9 +10,65 @@ const router = express.Router();
 
 // Authorized emails for IEEE member registration with their designations
 const AUTHORIZED_IEEE_MEMBER_EMAILS = {
+  // Joint Sec
+  '24ev3025@rgipt.ac.in': 'Joint_Sec',
+  '24it3058@rgipt.ac.in': 'Joint_Sec',
+  '24ev3004@rgipt.ac.in': 'Joint_Sec',
+  '24cd3001@rgipt.ac.in': 'Joint_Sec',
+  
+  // Design
+  '24ev3023@rgipt.ac.in': 'Design',
+  '24cd3016@rgipt.ac.in': 'Design',
+  '24mc3035@rgipt.ac.in': 'Design',
+  '24ev3026@rgipt.ac.in': 'Design',
+  '24mc3008@rgipt.ac.in': 'Design',
+  
+  // Audit
+  '24cs2039@rgipt.ac.in': 'Audit',
+  '24ec3026@rgipt.ac.in': 'Audit',
+  '24ec3016@rgipt.ac.in': 'Audit',
+  
+  // Editorial
+  '24cs3029@rgipt.ac.in': 'Editorial',
+  '24mc3004@rgipt.ac.in': 'Editorial',
+  '24cs2041@rgipt.ac.in': 'Editorial',
+  
+  // WIE
+  '24ec3044@rgipt.ac.in': 'WIE',
+  '24cs3057@rgipt.ac.in': 'WIE',
+  '24cs3052@rgipt.ac.in': 'WIE',
+  
+  // ComSoc
+  '24ev3003@rgipt.ac.in': 'ComSoc',
+  '24cd3021@rgipt.ac.in': 'ComSoc',
+  '24cd3028@rgipt.ac.in': 'ComSoc',
+  
+  // RAS
+  '24ec3020@rgipt.ac.in': 'RAS',
+  '24cd3007@rgipt.ac.in': 'RAS',
+  '24it3055@rgipt.ac.in': 'RAS',
+  
+  // CS
+  '24cs2019@rgipt.ac.in': 'CS',
   '24it3056@rgipt.ac.in': 'CS_Cohead',
-  // Add more authorized emails here as needed
-  // Format: 'email@domain.com': 'Designation'
+  '24cs3063@rgipt.ac.in': 'CS',
+  '24cs3044@rgipt.ac.in': 'CS',
+  
+  // EVENT
+  '24ec3002@rgipt.ac.in': 'EVENT',
+  '24cd3037@rgipt.ac.in': 'EVENT',
+  '24ev3030@rgipt.ac.in': 'EVENT',
+  '24ec3013@rgipt.ac.in': 'EVENT',
+  '24cs2032@rgipt.ac.in': 'EVENT',
+  
+  // CNM
+  '24cd3046@rgipt.ac.in': 'CNM',
+  '24cd3034@rgipt.ac.in': 'CNM',
+  
+  // Additional Members
+  '24mc3046@rgipt.ac.in': 'Member',
+  '24ec3010@rgipt.ac.in': 'Member',
+  '24mc3006@rgipt.ac.in': 'Member',
 };
 
 // Normalize email for comparison (handles Gmail dots)
