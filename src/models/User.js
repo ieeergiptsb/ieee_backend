@@ -68,8 +68,7 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null,
     trim: true,
-    unique: true,
-    sparse: true, // Allow null values but ensure uniqueness when present
+    // Note: unique and sparse are set via explicit index definition below
   },
   role: {
     type: String,
@@ -135,6 +134,10 @@ const userSchema = new mongoose.Schema({
 }, {
   timestamps: true,
 });
+
+// Create sparse unique index on ieee_membership_id
+// This allows multiple documents with null values but ensures uniqueness for non-null values
+userSchema.index({ ieee_membership_id: 1 }, { unique: true, sparse: true });
 
 // Hash password before saving
 userSchema.pre('save', async function(next) {

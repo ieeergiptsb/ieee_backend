@@ -302,6 +302,309 @@ router.post('/visitors/track', async (req, res) => {
   }
 });
 
+// ==================== DATABASE MANAGEMENT ====================
+
+// Get all users (for admin management)
+router.get('/users', authenticate, requireAdminEmail, async (req, res) => {
+  try {
+    const { page = 1, limit = 100, search = '' } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const query = {};
+    if (search) {
+      query.$or = [
+        { email: { $regex: search, $options: 'i' } },
+        { full_name: { $regex: search, $options: 'i' } },
+        { username: { $regex: search, $options: 'i' } }
+      ];
+    }
+    
+    const users = await User.find(query)
+      .select('-password -otp_code -reset_token')
+      .sort({ created_at: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+    
+    const total = await User.countDocuments(query);
+    
+    res.json({
+      success: true,
+      users,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Get users error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to get users' 
+    });
+  }
+});
+
+// Create single user
+router.post('/users', authenticate, requireAdminEmail, async (req, res) => {
+  try {
+    const { username, full_name, email, phone_number, college, branch, year, roll_no, password, membership_type, designation } = req.body;
+    
+    // Validate required fields
+    if (!username || !full_name || !email || !phone_number || !college || !branch || !year || !roll_no || !password || !membership_type) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields' 
+      });
+    }
+    
+    // Check if user already exists
+    const existingUser = await User.findOne({ 
+      $or: [{ email: email.toLowerCase() }, { username }] 
+    });
+    
+    if (existingUser) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'User with this email or username already exists' 
+      });
+    }
+    
+    // Create user
+    const user = new User({
+      username,
+      full_name,
+      email: email.toLowerCase(),
+      phone_number,
+      college,
+      branch,
+      year,
+      roll_no,
+      password, // Will be hashed by pre-save hook
+      membership_type,
+      designation: designation || '',
+      is_email_verified: true, // Admin-created users are auto-verified
+      role: 'user'
+    });
+    
+    // Generate IEEE membership ID if IEEE member
+    if (membership_type === 'ieee_member') {
+      await user.generateIEEEMembershipID();
+    }
+    
+    await user.save();
+    
+    res.json({
+      success: true,
+      user: user.toJSON(),
+      message: 'User created successfully'
+    });
+  } catch (error) {
+    console.error('Create user error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to create user' 
+    });
+  }
+});
+
+// Delete single user
+router.delete('/users/:id', authenticate, requireAdminEmail, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'User not found' 
+      });
+    }
+    
+    // Also delete user's registrations
+    await EventRegistration.deleteMany({ user_id: id });
+    
+    await User.findByIdAndDelete(id);
+    
+    res.json({
+      success: true,
+      message: 'User and associated registrations deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to delete user' 
+    });
+  }
+});
+
+// Bulk delete users
+router.post('/users/bulk-delete', authenticate, requireAdminEmail, async (req, res) => {
+  try {
+    const { user_ids } = req.body;
+    
+    if (!user_ids || !Array.isArray(user_ids) || user_ids.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Please provide an array of user IDs' 
+      });
+    }
+    
+    // Delete registrations first
+    await EventRegistration.deleteMany({ user_id: { $in: user_ids } });
+    
+    // Delete users
+    const result = await User.deleteMany({ _id: { $in: user_ids } });
+    
+    res.json({
+      success: true,
+      message: `Successfully deleted ${result.deletedCount} user(s) and their registrations`
+    });
+  } catch (error) {
+    console.error('Bulk delete users error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to delete users' 
+    });
+  }
+});
+
+// Bulk create users (from CSV or array)
+router.post('/users/bulk-create', authenticate, requireAdminEmail, async (req, res) => {
+  try {
+    const { users } = req.body;
+    
+    if (!users || !Array.isArray(users) || users.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Please provide an array of users' 
+      });
+    }
+    
+    const createdUsers = [];
+    const errors = [];
+    
+    for (let i = 0; i < users.length; i++) {
+      const userData = users[i];
+      try {
+        // Validate required fields
+        if (!userData.username || !userData.full_name || !userData.email || !userData.phone_number || 
+            !userData.college || !userData.branch || !userData.year || !userData.roll_no || !userData.password || !userData.membership_type) {
+          errors.push({ index: i, error: 'Missing required fields', data: userData });
+          continue;
+        }
+        
+        // Check if user exists
+        const existingUser = await User.findOne({ 
+          $or: [{ email: userData.email.toLowerCase() }, { username: userData.username }] 
+        });
+        
+        if (existingUser) {
+          errors.push({ index: i, error: 'User already exists', data: userData });
+          continue;
+        }
+        
+        // Create user
+        const user = new User({
+          username: userData.username,
+          full_name: userData.full_name,
+          email: userData.email.toLowerCase(),
+          phone_number: userData.phone_number,
+          college: userData.college,
+          branch: userData.branch,
+          year: userData.year,
+          roll_no: userData.roll_no,
+          password: userData.password,
+          membership_type: userData.membership_type,
+          designation: userData.designation || '',
+          is_email_verified: true,
+          role: 'user'
+        });
+        
+        if (userData.membership_type === 'ieee_member') {
+          await user.generateIEEEMembershipID();
+        }
+        
+        await user.save();
+        createdUsers.push(user.toJSON());
+      } catch (error) {
+        errors.push({ index: i, error: error.message, data: userData });
+      }
+    }
+    
+    res.json({
+      success: true,
+      created: createdUsers.length,
+      failed: errors.length,
+      users: createdUsers,
+      errors: errors
+    });
+  } catch (error) {
+    console.error('Bulk create users error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to create users' 
+    });
+  }
+});
+
+// Delete single registration
+router.delete('/registrations/:id', authenticate, requireAdminEmail, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const registration = await EventRegistration.findById(id);
+    if (!registration) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Registration not found' 
+      });
+    }
+    
+    await EventRegistration.findByIdAndDelete(id);
+    
+    res.json({
+      success: true,
+      message: 'Registration deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete registration error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to delete registration' 
+    });
+  }
+});
+
+// Bulk delete registrations
+router.post('/registrations/bulk-delete', authenticate, requireAdminEmail, async (req, res) => {
+  try {
+    const { registration_ids } = req.body;
+    
+    if (!registration_ids || !Array.isArray(registration_ids) || registration_ids.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Please provide an array of registration IDs' 
+      });
+    }
+    
+    const result = await EventRegistration.deleteMany({ _id: { $in: registration_ids } });
+    
+    res.json({
+      success: true,
+      message: `Successfully deleted ${result.deletedCount} registration(s)`
+    });
+  } catch (error) {
+    console.error('Bulk delete registrations error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to delete registrations' 
+    });
+  }
+});
+
 export default router;
 
 

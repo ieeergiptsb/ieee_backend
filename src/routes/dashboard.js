@@ -117,10 +117,17 @@ router.get('/id-card', authenticate, async (req, res) => {
     }
 
     // Generate ID card with member information
+    // For IEEE members, use designation if available, otherwise "IEEE Member"
+    // For non-members, use "Member"
+    let teamNameForCard = 'Member';
+    if (user.membership_type === 'ieee_member') {
+      teamNameForCard = user.designation || 'IEEE Member';
+    }
+    
     const idCardBuffer = await generateIDCard({
       userName: user.full_name || 'Member',
       userPhoto: user.profile_image_url,
-      teamName: user.membership_type === 'ieee_member' ? 'IEEE Member' : 'Member',
+      teamName: teamNameForCard,
       eventName: 'IEEE Student Branch, RGIPT', // Organization name
       userCollege: user.college || '',
       userRollNo: user.roll_no || '',
@@ -140,6 +147,116 @@ router.get('/id-card', authenticate, async (req, res) => {
     res.status(500).json({ 
       success: false, 
       error: error.message || 'Failed to generate ID card' 
+    });
+  }
+});
+
+// Get team members by designation (for team page)
+router.get('/team-members', async (req, res) => {
+  try {
+    const { designation } = req.query;
+    
+    // Build query - only get verified IEEE members with designations
+    const query = {
+      membership_type: 'ieee_member',
+      is_email_verified: true,
+    };
+    
+    // If designation is provided, filter by it
+    if (designation) {
+      query.designation = designation;
+    }
+    
+    // Get users with their profile data
+    const members = await User.find(query)
+      .select('full_name designation profile_image_url linkedin_url github_url instagram_url bio achievements ieee_membership_id email')
+      .sort({ designation: 1, full_name: 1 });
+    
+    // Map designations to team names and determine if head or cohead
+    const getTeamInfo = (designation) => {
+      if (!designation) return { team: 'General', role: 'Member', isHead: false };
+      
+      // Check if it's a head designation
+      const isHead = designation.includes('_Head') || 
+                     designation.includes('_Cohead') || 
+                     designation === 'Joint_Sec';
+      
+      // Map designation to team name
+      const teamMap = {
+        'Joint_Sec': 'Joint Secretaries',
+        'Design': 'Design',
+        'Audit': 'Audit',
+        'Editorial': 'Editorial',
+        'WIE': 'WIE',
+        'ComSoc': 'ComSoc',
+        'RAS': 'RAS',
+        'CS': 'CS',
+        'CS_Head': 'CS',
+        'CS_Cohead': 'CS',
+        'EVENT': 'Event',
+        'CNM': 'CNM',
+        'Member': 'General'
+      };
+      
+      const team = teamMap[designation] || 'General';
+      const role = isHead ? 'Head' : 'Cohead';
+      
+      return { team, role, isHead };
+    };
+    
+    // Transform to team member format
+    const teamMembers = members.map(member => {
+      const { team, role, isHead } = getTeamInfo(member.designation);
+      return {
+        name: member.full_name,
+        position: `${role} - ${team}`, // e.g., "Head - CS" or "Cohead - Design"
+        team: team,
+        role: role,
+        isHead: isHead,
+        designation: member.designation || 'Member',
+        linkedin: member.linkedin_url || '',
+        github: member.github_url || '',
+        instagram: member.instagram_url || '',
+        image: member.profile_image_url || null,
+        bio: member.bio || '',
+        email: member.email,
+        ieee_membership_id: member.ieee_membership_id,
+        achievements: member.achievements || '',
+        is_ieee_member: true, // All team members are IEEE members
+      };
+    });
+    
+    // Group by team
+    const membersByTeam = {};
+    teamMembers.forEach(member => {
+      if (!membersByTeam[member.team]) {
+        membersByTeam[member.team] = [];
+      }
+      membersByTeam[member.team].push(member);
+    });
+    
+    // Sort each team: heads first, then coheads, then by name
+    Object.keys(membersByTeam).forEach(team => {
+      membersByTeam[team].sort((a, b) => {
+        // Heads first
+        if (a.isHead && !b.isHead) return -1;
+        if (!a.isHead && b.isHead) return 1;
+        // Then by name
+        return a.name.localeCompare(b.name);
+      });
+    });
+    
+    res.json({
+      success: true,
+      members: teamMembers,
+      membersByTeam: membersByTeam,
+      count: teamMembers.length,
+    });
+  } catch (error) {
+    console.error('Team members error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to fetch team members' 
     });
   }
 });

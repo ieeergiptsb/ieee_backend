@@ -169,9 +169,16 @@ export async function generateIDCard({ userName, userPhoto, teamName, eventName,
   ctx.fillStyle = '#4a2c2a'; 
   ctx.fillText(cleanName, textLeftX, nameY);
 
-  // 1b. Membership Type / Team (Replaces "Username")
-  let subText = teamName || 'Member';
-  if (membershipType === 'ieee_member') subText = 'IEEE Member';
+  // 1b. Membership Type / Team / Designation (Replaces "Username")
+  // For IEEE members, show designation if available, otherwise show "IEEE Member"
+  // For non-members or event cards, show teamName or "Member"
+  let subText = 'Member';
+  if (membershipType === 'ieee_member') {
+    // For IEEE members, prefer designation over "IEEE Member"
+    subText = teamName || 'IEEE Member'; // teamName will be designation if passed
+  } else if (teamName) {
+    subText = teamName;
+  }
   
   ctx.font = `${subFontSize}px Arial`;
   
@@ -179,7 +186,7 @@ export async function generateIDCard({ userName, userPhoto, teamName, eventName,
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(textLeftX, subTextY - subFontSize, width * 0.5, subFontSize * 1.2);
   
-  // Write Type
+  // Write Type/Designation
   ctx.fillStyle = '#4a2c2a';
   ctx.fillText(subText, textLeftX, subTextY);
 

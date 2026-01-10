@@ -48,11 +48,12 @@ const AUTHORIZED_IEEE_MEMBER_EMAILS = {
   '24cd3007@rgipt.ac.in': 'RAS',
   '24it3055@rgipt.ac.in': 'RAS',
   
-  // CS
-  '24cs2019@rgipt.ac.in': 'CS',
-  '24it3056@rgipt.ac.in': 'CS_Cohead',
-  '24cs3063@rgipt.ac.in': 'CS',
-  '24cs3044@rgipt.ac.in': 'CS',
+  // CS - Ishita is Head, rest are Coheads
+  '24cs2019@rgipt.ac.in': 'CS_Head', // Ishita - Head
+  '24it3056@rgipt.ac.in': 'CS', // Shashank - Cohead
+  '24cs3063@rgipt.ac.in': 'CS', // Vedant - Cohead
+  '24cs3044@rgipt.ac.in': 'CS', // Saurabh - Cohead
+  // Note: Aditya and Vaibhav (webmasters) should be added to CS team when their emails are available
   
   // EVENT
   '24ec3002@rgipt.ac.in': 'EVENT',
@@ -142,7 +143,8 @@ router.post('/register/initiate', uploadProfilePicture, registerValidation, asyn
       roll_no, 
       password, 
       membership_type, 
-      membership_code 
+      membership_code,
+      designation 
     } = req.body;
 
     // Handle profile picture upload (mandatory)
@@ -254,6 +256,7 @@ router.post('/register/initiate', uploadProfilePicture, registerValidation, asyn
     }
     
     // Get designation for authorized IEEE members
+    // First check if designation is provided in request, then validate against whitelist
     let userDesignation = '';
     if (membership_type === 'ieee_member') {
       const normalizedForCheck = normalizeEmailForComparison(normalizedEmail);
@@ -261,7 +264,19 @@ router.post('/register/initiate', uploadProfilePicture, registerValidation, asyn
         authEmail => normalizeEmailForComparison(authEmail) === normalizedForCheck
       );
       if (authorizedEmail) {
-        userDesignation = AUTHORIZED_IEEE_MEMBER_EMAILS[authorizedEmail];
+        const whitelistDesignation = AUTHORIZED_IEEE_MEMBER_EMAILS[authorizedEmail];
+        // Use provided designation if it matches whitelist, otherwise use whitelist value
+        if (designation && designation === whitelistDesignation) {
+          userDesignation = designation;
+        } else {
+          userDesignation = whitelistDesignation;
+        }
+      } else if (designation) {
+        // If email not in whitelist but designation provided, reject
+        return res.status(403).json({ 
+          success: false, 
+          error: 'Only authorized emails can register as IEEE members. Please contact admin for authorization or register as a non-member.' 
+        });
       }
     }
     
