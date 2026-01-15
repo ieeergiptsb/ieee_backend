@@ -66,7 +66,6 @@ const userSchema = new mongoose.Schema({
   },
   ieee_membership_id: {
     type: String,
-    default: null,
     trim: true,
     // Note: unique and sparse are set via explicit index definition below
   },

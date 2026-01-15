@@ -250,3 +250,4 @@ router.post('/bulk-delete', authenticate, async (req, res) => {
 
 export default router;
 
+
