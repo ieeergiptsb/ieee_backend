@@ -117,22 +117,24 @@ router.get('/id-card', authenticate, async (req, res) => {
     }
 
     // Generate ID card with member information
-    // For IEEE members, use designation if available, otherwise "IEEE Member"
+    // For IEEE members, use designation if available (will be formatted nicely in idCardGenerator)
     // For non-members, use "Member"
     let teamNameForCard = 'Member';
     if (user.membership_type === 'ieee_member') {
+      // Pass the raw designation - it will be formatted in idCardGenerator
       teamNameForCard = user.designation || 'IEEE Member';
     }
     
     const idCardBuffer = await generateIDCard({
       userName: user.full_name || 'Member',
       userPhoto: user.profile_image_url,
-      teamName: teamNameForCard,
+      teamName: teamNameForCard, // This is the designation for IEEE members
       eventName: 'IEEE Student Branch, RGIPT', // Organization name
       userCollege: user.college || '',
       userRollNo: user.roll_no || '',
       membershipType: user.membership_type || 'non_member',
       ieeeMembershipId: user.ieee_membership_id || null,
+      userDesignation: user.designation || null, // Pass designation explicitly for better formatting
     });
 
     // Set response headers for image
@@ -152,11 +154,14 @@ router.get('/id-card', authenticate, async (req, res) => {
 });
 
 // Get team members by designation (for team page)
+// Returns all verified IEEE members with their profile images (uploaded during registration)
+// When IEEE members register and upload their photo, it's saved to profile_image_url and appears here
 router.get('/team-members', async (req, res) => {
   try {
     const { designation } = req.query;
     
     // Build query - only get verified IEEE members with designations
+    // Profile images are automatically included from profile_image_url field
     const query = {
       membership_type: 'ieee_member',
       is_email_verified: true,
@@ -167,7 +172,7 @@ router.get('/team-members', async (req, res) => {
       query.designation = designation;
     }
     
-    // Get users with their profile data
+    // Get users with their profile data including profile_image_url (uploaded during registration)
     const members = await User.find(query)
       .select('full_name designation profile_image_url linkedin_url github_url instagram_url bio achievements ieee_membership_id email')
       .sort({ designation: 1, full_name: 1 });
@@ -175,6 +180,12 @@ router.get('/team-members', async (req, res) => {
     // Map designations to team names and determine if head or cohead
     const getTeamInfo = (designation) => {
       if (!designation) return { team: 'General', role: 'Member', isHead: false };
+      
+      // Check if it's an executive officer position
+      const executivePositions = ['Chair', 'Vice Chair', 'Secretary', 'Treasurer', 'Web Master'];
+      if (executivePositions.includes(designation)) {
+        return { team: 'Leaders', role: designation, isHead: true, isExecutive: true };
+      }
       
       // Check if it's a head designation
       const isHead = designation.includes('_Head') || 
@@ -201,23 +212,24 @@ router.get('/team-members', async (req, res) => {
       const team = teamMap[designation] || 'General';
       const role = isHead ? 'Head' : 'Cohead';
       
-      return { team, role, isHead };
+      return { team, role, isHead, isExecutive: false };
     };
     
     // Transform to team member format
     const teamMembers = members.map(member => {
-      const { team, role, isHead } = getTeamInfo(member.designation);
+      const { team, role, isHead, isExecutive } = getTeamInfo(member.designation);
       return {
         name: member.full_name,
-        position: `${role} - ${team}`, // e.g., "Head - CS" or "Cohead - Design"
+        position: isExecutive ? role : `${role} - ${team}`, // e.g., "Chair" for executives or "Head - CS" for teams
         team: team,
         role: role,
         isHead: isHead,
+        isExecutive: isExecutive || false,
         designation: member.designation || 'Member',
         linkedin: member.linkedin_url || '',
         github: member.github_url || '',
         instagram: member.instagram_url || '',
-        image: member.profile_image_url || null,
+        image: member.profile_image_url || null, // Profile image uploaded during registration
         bio: member.bio || '',
         email: member.email,
         ieee_membership_id: member.ieee_membership_id,

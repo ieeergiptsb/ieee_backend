@@ -7,6 +7,7 @@ import authRoutes from './routes/auth.js';
 import eventRoutes from './routes/events.js';
 import dashboardRoutes from './routes/dashboard.js';
 import adminRoutes from './routes/admin.js';
+import contactRoutes from './routes/contact.js';
 
 // Load environment variables
 dotenv.config();
@@ -71,6 +72,7 @@ app.use('/auth', authRoutes);
 app.use('/events', eventRoutes);
 app.use('/dashboard', dashboardRoutes);
 app.use('/admin', adminRoutes);
+app.use('/contact', contactRoutes);
 
 // 404 handler
 app.use((req, res) => {

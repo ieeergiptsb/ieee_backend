@@ -5,6 +5,77 @@ import fs from 'fs';
 import https from 'https';
 import http from 'http';
 
+/**
+ * Format designation for display on ID card
+ * Converts technical designations to user-friendly labels
+ */
+function formatDesignationForDisplay(designation) {
+  if (!designation) return 'IEEE Member';
+  
+  // Executive positions - show as-is (these are already user-friendly)
+  const executivePositions = {
+    'Chair': 'Chair',
+    'Vice Chair': 'Vice Chair',
+    'Secretary': 'Secretary',
+    'Treasurer': 'Treasurer',
+    'Web Master': 'Web Master'
+  };
+  
+  if (executivePositions[designation]) {
+    return executivePositions[designation];
+  }
+  
+  // Officer positions - show as-is (e.g., "CS Secretary", "COMSOC Secretary", "WIE Secretary")
+  if (designation.includes('Secretary') || designation.includes('Vice Secretary')) {
+    return designation;
+  }
+  
+  // Head positions
+  if (designation === 'CS_Head') {
+    return 'CS Head';
+  }
+  if (designation.includes('_Head')) {
+    const team = designation.replace('_Head', '');
+    // Format team name nicely
+    const teamNames = {
+      'COMSOC': 'ComSoc',
+      'EVENT': 'Event',
+      'Joint_Secretary': 'Joint Secretary'
+    };
+    const displayTeam = teamNames[team] || team;
+    return `${displayTeam} Head`;
+  }
+  
+  // Joint Secretary
+  if (designation === 'Joint_Sec') {
+    return 'Joint Secretary';
+  }
+  
+  // Team designations (coheads and regular members)
+  const teamDisplayNames = {
+    'CS': 'CS Member',
+    'COMSOC': 'ComSoc Member',
+    'WIE': 'WIE Member',
+    'RAS': 'RAS Member',
+    'Design': 'Design Team',
+    'Audit': 'Audit Team',
+    'Editorial': 'Editorial Team',
+    'EVENT': 'Event Team',
+    'CNM': 'CNM Member',
+    'Joint_Secretary': 'Joint Secretary'
+  };
+  
+  if (teamDisplayNames[designation]) {
+    return teamDisplayNames[designation];
+  }
+  
+  // Default: return designation formatted nicely
+  // Replace underscores with spaces and capitalize words
+  return designation
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, l => l.toUpperCase());
+}
+
 // Get the directory of the current module
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,8 +114,9 @@ const fetchImageFromUrl = (url) => {
  * @param {string} options.userRollNo - User's roll number
  * @param {string} options.membershipType - 'ieee_member' or 'non_member'
  * @param {string} options.ieeeMembershipId - IEEE membership ID (if IEEE member)
+ * @param {string} options.userDesignation - User's designation (for better formatting)
  */
-export async function generateIDCard({ userName, userPhoto, teamName, eventName, userCollege, userRollNo, membershipType, ieeeMembershipId }) {
+export async function generateIDCard({ userName, userPhoto, teamName, eventName, userCollege, userRollNo, membershipType, ieeeMembershipId, userDesignation }) {
   // 1. PATH SETUP
   // Use member_id.png for IEEE member ID cards, id.png for event ID cards
   // Member cards: teamName is "IEEE Member" or "Member", or when membershipType is provided
@@ -174,8 +246,14 @@ export async function generateIDCard({ userName, userPhoto, teamName, eventName,
   // For non-members or event cards, show teamName or "Member"
   let subText = 'Member';
   if (membershipType === 'ieee_member') {
-    // For IEEE members, prefer designation over "IEEE Member"
-    subText = teamName || 'IEEE Member'; // teamName will be designation if passed
+    // For IEEE members, format designation nicely for display
+    // Use userDesignation if provided, otherwise use teamName
+    const designationToFormat = userDesignation || teamName;
+    if (designationToFormat && designationToFormat !== 'IEEE Member' && designationToFormat !== 'Member') {
+      subText = formatDesignationForDisplay(designationToFormat);
+    } else {
+      subText = 'IEEE Member';
+    }
   } else if (teamName) {
     subText = teamName;
   }

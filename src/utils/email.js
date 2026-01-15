@@ -546,3 +546,154 @@ export const sendPasswordResetEmail = async (email, resetToken) => {
     return { success: false, error: error.message };
   }
 };
+
+// Send contact form email via SendGrid
+const sendContactFormEmailViaSendGrid = async ({ fromName, fromEmail, subject, message }) => {
+  initializeSendGrid();
+  
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .info-box { background: white; border-left: 4px solid #667eea; padding: 15px; margin: 15px 0; }
+        .message-box { background: #f0f0f0; padding: 15px; border-radius: 8px; margin: 20px 0; }
+        .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>IEEE RGIPT - New Contact Form Submission</h1>
+        </div>
+        <div class="content">
+          <h2>You have received a new message from the website contact form</h2>
+          
+          <div class="info-box">
+            <p><strong>From:</strong> ${fromName}</p>
+            <p><strong>Email:</strong> <a href="mailto:${fromEmail}">${fromEmail}</a></p>
+            <p><strong>Subject:</strong> ${subject}</p>
+          </div>
+          
+          <div class="message-box">
+            <p><strong>Message:</strong></p>
+            <p>${message.replace(/\n/g, '<br>')}</p>
+          </div>
+          
+          <p style="margin-top: 20px;">
+            <strong>Reply to:</strong> <a href="mailto:${fromEmail}">${fromEmail}</a>
+          </p>
+        </div>
+        <div class="footer">
+          <p>© 2025 IEEE Student Branch, RGIPT. All rights reserved.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const msg = {
+    to: 'ieee_sb@rgipt.ac.in',
+    from: process.env.EMAIL_FROM || 'ieee_sb@rgipt.ac.in',
+    replyTo: fromEmail,
+    subject: `[Contact Form] ${subject}`,
+    html: html,
+  };
+
+  try {
+    const result = await sgMail.send(msg);
+    console.log('✅ Contact form email sent successfully via SendGrid');
+    return { success: true, messageId: result[0]?.headers['x-message-id'] };
+  } catch (error) {
+    console.error('❌ SendGrid error:', error.message);
+    throw error;
+  }
+};
+
+// Send contact form email (SendGrid primary, SMTP fallback)
+export const sendContactFormEmail = async ({ fromName, fromEmail, subject, message }) => {
+  try {
+    // Try SendGrid first
+    if (isSendGridConfigured()) {
+      try {
+        console.log(`📧 Sending contact form email via SendGrid from: ${fromEmail}`);
+        return await sendContactFormEmailViaSendGrid({ fromName, fromEmail, subject, message });
+      } catch (error) {
+        console.warn('⚠️ SendGrid failed, trying SMTP fallback:', error.message);
+        // Fall through to SMTP
+      }
+    }
+
+    // Fallback to SMTP
+    const transporter = getSMTPTransporter();
+    if (!transporter) {
+      console.log(`📧 Contact form submission from ${fromName} (${fromEmail}): ${subject}`);
+      return { success: false, error: 'Email service not configured' };
+    }
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .info-box { background: white; border-left: 4px solid #667eea; padding: 15px; margin: 15px 0; }
+          .message-box { background: #f0f0f0; padding: 15px; border-radius: 8px; margin: 20px 0; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>IEEE RGIPT - New Contact Form Submission</h1>
+          </div>
+          <div class="content">
+            <h2>You have received a new message from the website contact form</h2>
+            
+            <div class="info-box">
+              <p><strong>From:</strong> ${fromName}</p>
+              <p><strong>Email:</strong> <a href="mailto:${fromEmail}">${fromEmail}</a></p>
+              <p><strong>Subject:</strong> ${subject}</p>
+            </div>
+            
+            <div class="message-box">
+              <p><strong>Message:</strong></p>
+              <p>${message.replace(/\n/g, '<br>')}</p>
+            </div>
+            
+            <p style="margin-top: 20px;">
+              <strong>Reply to:</strong> <a href="mailto:${fromEmail}">${fromEmail}</a>
+            </p>
+          </div>
+          <div class="footer">
+            <p>© 2025 IEEE Student Branch, RGIPT. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const mailOptions = {
+      from: `"IEEE RGIPT Contact Form" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+      to: 'ieee_sb@rgipt.ac.in',
+      replyTo: fromEmail,
+      subject: `[Contact Form] ${subject}`,
+      html: html,
+    };
+
+    console.log(`📧 Sending contact form email via SMTP from: ${fromEmail}`);
+    const info = await transporter.sendMail(mailOptions);
+    console.log('✅ Contact form email sent successfully via SMTP:', info.messageId);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('❌ Error sending contact form email:', error);
+    return { success: false, error: error.message };
+  }
+};

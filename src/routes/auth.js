@@ -5,72 +5,12 @@ import { generateToken } from '../utils/jwt.js';
 import { sendOTPEmail, sendPasswordResetEmail } from '../utils/email.js';
 import { authenticate } from '../middleware/auth.js';
 import { uploadProfilePicture } from '../middleware/upload.js';
+import { getEmailToDesignationMap, TEAM_STRUCTURE } from '../data/team-structure.js';
 
 const router = express.Router();
 
-// Authorized emails for IEEE member registration with their designations
-const AUTHORIZED_IEEE_MEMBER_EMAILS = {
-  // Joint Sec
-  '24ev3025@rgipt.ac.in': 'Joint_Sec',
-  '24it3058@rgipt.ac.in': 'Joint_Sec',
-  '24ev3004@rgipt.ac.in': 'Joint_Sec',
-  '24cd3001@rgipt.ac.in': 'Joint_Sec',
-  
-  // Design
-  '24ev3023@rgipt.ac.in': 'Design',
-  '24cd3016@rgipt.ac.in': 'Design',
-  '24mc3035@rgipt.ac.in': 'Design',
-  '24ev3026@rgipt.ac.in': 'Design',
-  '24mc3008@rgipt.ac.in': 'Design',
-  
-  // Audit
-  '24cs2039@rgipt.ac.in': 'Audit',
-  '24ec3026@rgipt.ac.in': 'Audit',
-  '24ec3016@rgipt.ac.in': 'Audit',
-  
-  // Editorial
-  '24cs3029@rgipt.ac.in': 'Editorial',
-  '24mc3004@rgipt.ac.in': 'Editorial',
-  '24cs2041@rgipt.ac.in': 'Editorial',
-  
-  // WIE
-  '24ec3044@rgipt.ac.in': 'WIE',
-  '24cs3057@rgipt.ac.in': 'WIE',
-  '24cs3052@rgipt.ac.in': 'WIE',
-  
-  // ComSoc
-  '24ev3003@rgipt.ac.in': 'ComSoc',
-  '24cd3021@rgipt.ac.in': 'ComSoc',
-  '24cd3028@rgipt.ac.in': 'ComSoc',
-  
-  // RAS
-  '24ec3020@rgipt.ac.in': 'RAS',
-  '24cd3007@rgipt.ac.in': 'RAS',
-  '24it3055@rgipt.ac.in': 'RAS',
-  
-  // CS - Ishita is Head, rest are Coheads
-  '24cs2019@rgipt.ac.in': 'CS_Head', // Ishita - Head
-  '24it3056@rgipt.ac.in': 'CS', // Shashank - Cohead
-  '24cs3063@rgipt.ac.in': 'CS', // Vedant - Cohead
-  '24cs3044@rgipt.ac.in': 'CS', // Saurabh - Cohead
-  // Note: Aditya and Vaibhav (webmasters) should be added to CS team when their emails are available
-  
-  // EVENT
-  '24ec3002@rgipt.ac.in': 'EVENT',
-  '24cd3037@rgipt.ac.in': 'EVENT',
-  '24ev3030@rgipt.ac.in': 'EVENT',
-  '24ec3013@rgipt.ac.in': 'EVENT',
-  '24cs2032@rgipt.ac.in': 'EVENT',
-  
-  // CNM
-  '24cd3046@rgipt.ac.in': 'CNM',
-  '24cd3034@rgipt.ac.in': 'CNM',
-  
-  // Additional Members
-  '24mc3046@rgipt.ac.in': 'Member',
-  '24ec3010@rgipt.ac.in': 'Member',
-  '24mc3006@rgipt.ac.in': 'Member',
-};
+// Get email to designation mapping from team structure
+const AUTHORIZED_IEEE_MEMBER_EMAILS = getEmailToDesignationMap();
 
 // Normalize email for comparison (handles Gmail dots)
 const normalizeEmailForComparison = (email) => {
@@ -194,7 +134,7 @@ router.post('/register/initiate', uploadProfilePicture, registerValidation, asyn
             });
           }
           
-          // Set designation for authorized IEEE members
+          // Auto-assign designation for authorized IEEE members
           existingUser.designation = AUTHORIZED_IEEE_MEMBER_EMAILS[authorizedEmail];
         }
         
@@ -255,8 +195,8 @@ router.post('/register/initiate', uploadProfilePicture, registerValidation, asyn
       }
     }
     
-    // Get designation for authorized IEEE members
-    // First check if designation is provided in request, then validate against whitelist
+    // Auto-assign designation for authorized IEEE members based on email
+    // Designation is automatically determined from email, no need to provide it
     let userDesignation = '';
     if (membership_type === 'ieee_member') {
       const normalizedForCheck = normalizeEmailForComparison(normalizedEmail);
@@ -264,15 +204,10 @@ router.post('/register/initiate', uploadProfilePicture, registerValidation, asyn
         authEmail => normalizeEmailForComparison(authEmail) === normalizedForCheck
       );
       if (authorizedEmail) {
-        const whitelistDesignation = AUTHORIZED_IEEE_MEMBER_EMAILS[authorizedEmail];
-        // Use provided designation if it matches whitelist, otherwise use whitelist value
-        if (designation && designation === whitelistDesignation) {
-          userDesignation = designation;
-        } else {
-          userDesignation = whitelistDesignation;
-        }
-      } else if (designation) {
-        // If email not in whitelist but designation provided, reject
+        // Auto-assign designation from team structure
+        userDesignation = AUTHORIZED_IEEE_MEMBER_EMAILS[authorizedEmail];
+      } else {
+        // Email not in authorized list
         return res.status(403).json({ 
           success: false, 
           error: 'Only authorized emails can register as IEEE members. Please contact admin for authorization or register as a non-member.' 
