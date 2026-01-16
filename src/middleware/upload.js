@@ -27,6 +27,18 @@ const upload = multer({
   fileFilter: fileFilter,
 });
 
+// Configure multer for announcement images (2MB limit)
+const uploadAnnouncement = multer({
+  storage: storage,
+  limits: {
+    fileSize: 2 * 1024 * 1024, // 2MB max file size
+  },
+  fileFilter: fileFilter,
+});
+
 // Middleware for single profile picture upload
 export const uploadProfilePicture = upload.single('profile_picture');
+
+// Middleware for announcement image upload
+export const uploadAnnouncementImage = uploadAnnouncement.single('image');
 

@@ -273,6 +273,112 @@ router.get('/team-members', async (req, res) => {
   }
 });
 
+// Get a single team member by slug (name-based slug)
+router.get('/team-members/:slug', async (req, res) => {
+  try {
+    const { slug } = req.params;
+    
+    // Get all team members
+    const query = {
+      membership_type: 'ieee_member',
+      is_email_verified: true,
+    };
+    
+    const members = await User.find(query)
+      .select('full_name designation profile_image_url linkedin_url github_url instagram_url bio achievements ieee_membership_id email')
+      .sort({ designation: 1, full_name: 1 });
+    
+    // Helper to generate slug from name
+    const generateSlug = (name) => {
+      return name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+    };
+    
+    // Find member by matching slug
+    const member = members.find(m => {
+      const memberSlug = generateSlug(m.full_name);
+      return memberSlug === slug;
+    });
+    
+    if (!member) {
+      return res.status(404).json({
+        success: false,
+        error: 'Member not found'
+      });
+    }
+    
+    // Map designation to team info (same logic as team-members endpoint)
+    const getTeamInfo = (designation) => {
+      if (!designation) return { team: 'General', role: 'Member', isHead: false };
+      
+      const executivePositions = ['Chair', 'Vice Chair', 'Secretary', 'Treasurer', 'Web Master'];
+      if (executivePositions.includes(designation)) {
+        return { team: 'Leaders', role: designation, isHead: true, isExecutive: true };
+      }
+      
+      const isHead = designation.includes('_Head') || 
+                     designation.includes('_Cohead') || 
+                     designation === 'Joint_Sec';
+      
+      const teamMap = {
+        'Joint_Sec': 'Joint Secretaries',
+        'Design': 'Design',
+        'Audit': 'Audit',
+        'Editorial': 'Editorial',
+        'WIE': 'WIE',
+        'ComSoc': 'ComSoc',
+        'RAS': 'RAS',
+        'CS': 'CS',
+        'CS_Head': 'CS',
+        'CS_Cohead': 'CS',
+        'EVENT': 'Event',
+        'CNM': 'CNM',
+        'Member': 'General'
+      };
+      
+      const team = teamMap[designation] || 'General';
+      const role = isHead ? 'Head' : 'Cohead';
+      
+      return { team, role, isHead, isExecutive: false };
+    };
+    
+    const { team, role, isHead, isExecutive } = getTeamInfo(member.designation);
+    
+    const memberData = {
+      name: member.full_name,
+      position: isExecutive ? role : `${role} - ${team}`,
+      team: team,
+      role: role,
+      isHead: isHead,
+      isExecutive: isExecutive || false,
+      designation: member.designation || 'Member',
+      linkedin: member.linkedin_url || '',
+      github: member.github_url || '',
+      instagram: member.instagram_url || '',
+      email: member.email || '',
+      image: member.profile_image_url || null,
+      bio: member.bio || '',
+      achievements: member.achievements || '',
+      ieee_membership_id: member.ieee_membership_id,
+      is_ieee_member: true,
+      slug: generateSlug(member.full_name)
+    };
+    
+    res.json({
+      success: true,
+      member: memberData
+    });
+  } catch (error) {
+    console.error('Team member error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to fetch team member' 
+    });
+  }
+});
+
 export default router;
 
 
