@@ -1,7 +1,6 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
-import { authenticate } from '../middleware/auth.js';
-import { requireAdminEmail } from '../middleware/admin.js';
+import { authenticate, requireAdminEmail } from '../middleware/auth.js';
 import Announcement from '../models/Announcement.js';
 import { uploadAnnouncementImage } from '../middleware/upload.js';
 
