@@ -202,6 +202,10 @@ export const sendOTPEmail = async (email, otpCode, type = 'registration') => {
 const sendConfirmationEmailViaSendGrid = async (email, eventName, teamName, userName, userPhoto, userCollege, userRollNo, membershipType, ieeeMembershipId) => {
   initializeSendGrid();
   
+  // Check if this is CodeForHer event
+  const isCodeForHer = eventName && (eventName.toLowerCase().includes('codeforher') || eventName.toLowerCase().includes('code for her'));
+  const whatsappLink = 'https://chat.whatsapp.com/Llf1wdb3fo47F1GrCo5U5N';
+  
   const html = `
     <!DOCTYPE html>
     <html>
@@ -213,6 +217,9 @@ const sendConfirmationEmailViaSendGrid = async (email, eventName, teamName, user
         .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
         .success-box { background: #d4edda; border: 1px solid #c3e6cb; padding: 15px; border-radius: 8px; margin: 20px 0; }
         .id-card-notice { background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin: 20px 0; }
+        .whatsapp-box { background: #25D366; border: 1px solid #20bd5a; padding: 15px; border-radius: 8px; margin: 20px 0; text-align: center; }
+        .whatsapp-box a { color: white; text-decoration: none; font-weight: bold; display: inline-block; padding: 10px 20px; background: rgba(255,255,255,0.2); border-radius: 5px; }
+        .whatsapp-box a:hover { background: rgba(255,255,255,0.3); }
       </style>
     </head>
     <body>
@@ -232,6 +239,13 @@ const sendConfirmationEmailViaSendGrid = async (email, eventName, teamName, user
             <p><strong>📋 Your Event ID Card</strong></p>
             <p>Please find your official event ID card attached to this email. You can print it or show it on your mobile device at the event venue.</p>
           </div>
+          ${isCodeForHer ? `
+          <div class="whatsapp-box">
+            <p style="color: white; margin-bottom: 10px;"><strong>📱 Join the Official WhatsApp Group</strong></p>
+            <p style="color: white; margin-bottom: 15px; font-size: 14px;">Join our WhatsApp group to receive problem statements, updates, and mentor allocations.</p>
+            <a href="${whatsappLink}" target="_blank" rel="noopener noreferrer">Join WhatsApp Group</a>
+          </div>
+          ` : ''}
           <p>You will receive further instructions and updates via email. Please keep an eye on your inbox.</p>
           <p>Thank you for participating!</p>
         </div>
@@ -327,6 +341,10 @@ export const sendRegistrationConfirmationEmail = async (email, eventName, teamNa
       // Continue without ID card if generation fails
     }
 
+    // Check if this is CodeForHer event
+    const isCodeForHer = eventName && (eventName.toLowerCase().includes('codeforher') || eventName.toLowerCase().includes('code for her'));
+    const whatsappLink = 'https://chat.whatsapp.com/Llf1wdb3fo47F1GrCo5U5N';
+    
     const html = `
       <!DOCTYPE html>
       <html>
@@ -338,6 +356,9 @@ export const sendRegistrationConfirmationEmail = async (email, eventName, teamNa
           .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
           .success-box { background: #d4edda; border: 1px solid #c3e6cb; padding: 15px; border-radius: 8px; margin: 20px 0; }
           .id-card-notice { background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin: 20px 0; }
+          .whatsapp-box { background: #25D366; border: 1px solid #20bd5a; padding: 15px; border-radius: 8px; margin: 20px 0; text-align: center; }
+          .whatsapp-box a { color: white; text-decoration: none; font-weight: bold; display: inline-block; padding: 10px 20px; background: rgba(255,255,255,0.2); border-radius: 5px; }
+          .whatsapp-box a:hover { background: rgba(255,255,255,0.3); }
         </style>
       </head>
       <body>
@@ -357,6 +378,13 @@ export const sendRegistrationConfirmationEmail = async (email, eventName, teamNa
             <div class="id-card-notice">
               <p><strong>📋 Your Event ID Card</strong></p>
               <p>Please find your official event ID card attached to this email. You can print it or show it on your mobile device at the event venue.</p>
+            </div>
+            ` : ''}
+            ${isCodeForHer ? `
+            <div class="whatsapp-box">
+              <p style="color: white; margin-bottom: 10px;"><strong>📱 Join the Official WhatsApp Group</strong></p>
+              <p style="color: white; margin-bottom: 15px; font-size: 14px;">Join our WhatsApp group to receive problem statements, updates, and mentor allocations.</p>
+              <a href="${whatsappLink}" target="_blank" rel="noopener noreferrer">Join WhatsApp Group</a>
             </div>
             ` : ''}
             <p>You will receive further instructions and updates via email. Please keep an eye on your inbox.</p>

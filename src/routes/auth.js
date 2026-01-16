@@ -30,7 +30,7 @@ const registerValidation = [
   body('email').isEmail().withMessage('Valid email is required'), // Removed normalizeEmail() to preserve dots
   body('phone_number').trim().isLength({ min: 10 }).withMessage('Valid phone number is required'),
   body('college').trim().isLength({ min: 2 }).withMessage('College name is required'),
-  body('branch').isIn(['CSE', 'CSD', 'ECE', 'EV', 'MnC', 'IT', 'Mechanical', 'Chemical', 'Petroleum', 'Civil', 'Biotech', 'Other']).withMessage('Valid branch is required'),
+  body('branch').isIn(['CSE', 'CSD', 'IDD CSE', 'Electronics', 'EV', 'MnC', 'IT', 'Mechanical', 'Chemical', 'Petroleum', 'Civil', 'Biotech', 'Other']).withMessage('Valid branch is required'),
   body('year').isIn(['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year']).withMessage('Valid year is required'),
   body('roll_no').trim().notEmpty().withMessage('Roll number is required'),
   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
