@@ -1,6 +1,7 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
 import User from '../models/User.js';
+import PendingUser from '../models/PendingUser.js';
 import { generateToken } from '../utils/jwt.js';
 import { sendOTPEmail, sendPasswordResetEmail } from '../utils/email.js';
 import { authenticate } from '../middleware/auth.js';
@@ -112,75 +113,13 @@ router.post('/register/initiate', uploadProfilePicture, registerValidation, asyn
           error: 'User already exists. Please login instead.' 
         });
       } else {
-        // User exists but not verified - update and resend OTP
-        existingUser.full_name = full_name;
-        existingUser.phone_number = phone_number;
-        existingUser.college = college;
-        existingUser.branch = branch;
-        existingUser.year = year;
-        existingUser.roll_no = roll_no;
-        existingUser.password = password;
-        // Validate IEEE member registration for existing users too
-        if (membership_type === 'ieee_member') {
-          const normalizedForCheck = normalizeEmailForComparison(normalizedEmail);
-          const authorizedEmail = Object.keys(AUTHORIZED_IEEE_MEMBER_EMAILS).find(
-            authEmail => normalizeEmailForComparison(authEmail) === normalizedForCheck
-          );
-          
-          if (!authorizedEmail) {
-            return res.status(403).json({ 
-              success: false, 
-              error: 'Only authorized emails can register as IEEE members. Please contact admin for authorization or register as a non-member.' 
-            });
-          }
-          
-          // Auto-assign designation for authorized IEEE members
-          existingUser.designation = AUTHORIZED_IEEE_MEMBER_EMAILS[authorizedEmail];
-        }
-        
-        existingUser.membership_type = membership_type;
-        existingUser.membership_code = membership_type === 'ieee_member' ? membership_code : null;
-        
-        // Generate IEEE membership ID for IEEE members if they don't have one
-        if (membership_type === 'ieee_member' && !existingUser.ieee_membership_id) {
-          await existingUser.generateIEEEMembershipID();
-        }
-        
-        if (profileImageUrl) {
-          existingUser.profile_image_url = profileImageUrl;
-        }
-        
-        const otp = existingUser.generateOTP();
-        await existingUser.save();
-
-        // Reuse normalizedEmail from above (already declared)
-        // For Gmail, remove dots if not already done
-        if (normalizedEmail.includes('@gmail.com') && normalizedEmail.includes('.')) {
-          const [localPart, domain] = normalizedEmail.split('@');
-          normalizedEmail = localPart.replace(/\./g, '') + '@' + domain;
-        }
-        
-        // Send OTP email
-        await sendOTPEmail(normalizedEmail, otp, 'registration');
-
-        return res.json({ 
-          success: true, 
-          message: 'OTP sent to your email. Please verify to complete registration.',
-          email: normalizedEmail
-        });
+        // User exists but not verified (from old flow) - delete them to use PendingUser
+        await User.deleteOne({ _id: existingUser._id });
       }
     }
 
-    // Note: IEEE membership ID will be auto-generated on the backend
-    // membership_code is optional (only for users who already have an existing code)
-
-    // normalizedEmail already declared above, just ensure Gmail dots are removed
-    if (normalizedEmail.includes('@gmail.com') && normalizedEmail.includes('.')) {
-      const [localPart, domain] = normalizedEmail.split('@');
-      normalizedEmail = localPart.replace(/\./g, '') + '@' + domain;
-    }
-    
-    // Validate IEEE member registration - check if email is authorized
+    // Auto-assign designation for authorized IEEE members based on email
+    let userDesignation = '';
     if (membership_type === 'ieee_member') {
       const normalizedForCheck = normalizeEmailForComparison(normalizedEmail);
       const authorizedEmail = Object.keys(AUTHORIZED_IEEE_MEMBER_EMAILS).find(
@@ -193,30 +132,11 @@ router.post('/register/initiate', uploadProfilePicture, registerValidation, asyn
           error: 'Only authorized emails can register as IEEE members. Please contact admin for authorization or register as a non-member.' 
         });
       }
+      userDesignation = AUTHORIZED_IEEE_MEMBER_EMAILS[authorizedEmail];
     }
     
-    // Auto-assign designation for authorized IEEE members based on email
-    // Designation is automatically determined from email, no need to provide it
-    let userDesignation = '';
-    if (membership_type === 'ieee_member') {
-      const normalizedForCheck = normalizeEmailForComparison(normalizedEmail);
-      const authorizedEmail = Object.keys(AUTHORIZED_IEEE_MEMBER_EMAILS).find(
-        authEmail => normalizeEmailForComparison(authEmail) === normalizedForCheck
-      );
-      if (authorizedEmail) {
-        // Auto-assign designation from team structure
-        userDesignation = AUTHORIZED_IEEE_MEMBER_EMAILS[authorizedEmail];
-      } else {
-        // Email not in authorized list
-        return res.status(403).json({ 
-          success: false, 
-          error: 'Only authorized emails can register as IEEE members. Please contact admin for authorization or register as a non-member.' 
-        });
-      }
-    }
-    
-    // Create new user
-    const user = new User({
+    // Create userData object to store in PendingUser
+    const userData = {
       username,
       full_name,
       email: normalizedEmail,
@@ -228,47 +148,26 @@ router.post('/register/initiate', uploadProfilePicture, registerValidation, asyn
       password,
       membership_type,
       membership_code: membership_type === 'ieee_member' ? membership_code : null,
-      designation: userDesignation, // Set designation for authorized IEEE members
+      designation: userDesignation,
       role: 'user',
       profile_image_url: profileImageUrl,
-    });
+    };
 
-    // Generate IEEE membership ID for IEEE members
-    if (membership_type === 'ieee_member') {
-      await user.generateIEEEMembershipID();
-    }
+    // Generate numeric 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Generate and save OTP
-    const otp = user.generateOTP();
-    await user.save();
-
-    // Verify user was saved by fetching it again
-    const savedUser = await User.findById(user._id);
-    console.log('✅ User created and saved:', { 
-      id: user._id, 
-      email: user.email, 
-      saved_email: savedUser?.email,
-      username: user.username,
-      otp: otp,
-      email_normalized: normalizedEmail,
-      is_saved: !!savedUser
-    });
-    
-    if (!savedUser) {
-      console.error('❌ ERROR: User was not saved to database!');
-      return res.status(500).json({
-        success: false,
-        error: 'Failed to save user. Please try again.'
-      });
-    }
+    // Store in PendingUser collection
+    await PendingUser.findOneAndUpdate(
+      { email: normalizedEmail },
+      { email: normalizedEmail, otp, userData },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
     // Send OTP email using normalized email
     const emailResult = await sendOTPEmail(normalizedEmail, otp, 'registration');
     
     if (!emailResult.success) {
       console.error('⚠️ Failed to send OTP email:', emailResult.error);
-      // Still return success but include OTP in response for development
-      // In production, you might want to handle this differently
       return res.json({ 
         success: true, 
         message: 'Registration initiated. OTP email failed to send. Please check console for OTP code.',
@@ -317,99 +216,34 @@ router.post('/register/complete', async (req, res) => {
       normalizedEmail = localPart.replace(/\./g, '') + '@' + domain;
     }
     
-    console.log('🔍 Looking for user with normalized email:', normalizedEmail);
-    
-    // First, check all users in database for debugging
-    const allUsersBefore = await User.find({}, 'email username is_email_verified');
-    console.log('📋 All users in database BEFORE search:', allUsersBefore.map(u => ({ 
-      email: u.email, 
-      username: u.username,
-      verified: u.is_email_verified,
-      email_exact_match: u.email === normalizedEmail,
-      email_length: u.email?.length,
-      search_length: normalizedEmail.length
-    })));
-    
-    // Try exact match first
-    let user = await User.findOne({ email: normalizedEmail });
-    
-    // If not found and it's Gmail, also try with dots (in case stored differently)
-    if (!user && normalizedEmail.includes('@gmail.com')) {
-      console.log('⚠️ Exact match not found, trying with dots...');
-      const emailWithDots = normalizedEmail.replace(/([a-z0-9])/g, '$1.').replace(/\.@/g, '@');
-      // Try a few common dot patterns
-      const variations = [
-        normalizedEmail.replace(/([a-z0-9])([a-z0-9])/g, '$1.$2'),
-        normalizedEmail.replace(/([a-z0-9]{3})/g, '$1.')
-      ];
-      for (const variation of variations) {
-        user = await User.findOne({ email: variation });
-        if (user) break;
+    const pendingUser = await PendingUser.findOne({ email: normalizedEmail });
+
+    if (!pendingUser) {
+      // Check if already in User collection
+      const existingUser = await User.findOne({ email: normalizedEmail });
+      if (existingUser && existingUser.is_email_verified) {
+        return res.status(400).json({ success: false, error: 'Email already verified. Please login.' });
       }
+      return res.status(404).json({ success: false, error: 'Session expired or invalid email. Please register again.' });
     }
 
-    if (!user) {
-      // Debug: Show all users in database
-      const allUsers = await User.find({}, 'email username is_email_verified');
-      console.log('📋 All users in database AFTER search:', allUsers.map(u => ({ 
-        email: u.email, 
-        username: u.username,
-        verified: u.is_email_verified 
-      })));
-      console.log('🔍 Searched for:', normalizedEmail);
-      console.log('❌ Email comparison:', allUsers.map(u => ({
-        stored: u.email,
-        searched: normalizedEmail,
-        match: u.email === normalizedEmail,
-        stored_lower: u.email?.toLowerCase(),
-        searched_lower: normalizedEmail.toLowerCase()
-      })));
-      
-      return res.status(404).json({ 
-        success: false, 
-        error: 'User not found. Please register first.' 
-      });
+    if (pendingUser.otp !== otp_code) {
+      return res.status(400).json({ success: false, error: 'Invalid or expired OTP code' });
     }
 
-    console.log('✅ User found:', { 
-      id: user._id, 
-      email: user.email, 
-      username: user.username,
-      verified: user.is_email_verified,
-      hasOTP: !!user.otp_code,
-      otp_expires: user.otp_expires_at 
-    });
-
-    if (user.is_email_verified) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Email already verified. Please login.' 
-      });
-    }
-
-    // Verify OTP
-    console.log('🔐 Verifying OTP:', {
-      provided_otp: otp_code,
-      stored_otp: user.otp_code,
-      otp_expires: user.otp_expires_at,
-      is_expired: user.otp_expires_at ? new Date() > user.otp_expires_at : 'no expiry'
-    });
+    // OTP matches! Move from PendingUser to User
+    const user = new User(pendingUser.userData);
     
-    const otpValid = user.verifyOTP(otp_code);
-    console.log('🔐 OTP Verification Result:', otpValid);
-    
-    if (!otpValid) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Invalid or expired OTP code' 
-      });
+    // Generate IEEE membership ID for IEEE members
+    if (user.membership_type === 'ieee_member') {
+      await user.generateIEEEMembershipID();
     }
-
-    // Mark email as verified and clear OTP
+    
     user.is_email_verified = true;
-    user.otp_code = null;
-    user.otp_expires_at = null;
     await user.save();
+
+    // Clean up PendingUser
+    await PendingUser.deleteOne({ _id: pendingUser._id });
 
     // Generate token
     const token = generateToken(user._id, user.role);
@@ -454,34 +288,34 @@ router.post('/otp/resend', async (req, res) => {
       normalizedEmail = localPart.replace(/\./g, '') + '@' + domain;
     }
 
-    const user = await User.findOne({ email: normalizedEmail });
+    let otp;
 
-    if (!user) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'User not found' 
-      });
+    if (otp_type === 'registration') {
+      const pendingUser = await PendingUser.findOne({ email: normalizedEmail });
+      if (!pendingUser) {
+        const existingUser = await User.findOne({ email: normalizedEmail });
+        if (existingUser && existingUser.is_email_verified) {
+           return res.status(400).json({ success: false, error: 'Email already verified. Please login.' });
+        }
+        return res.status(404).json({ success: false, error: 'Registration session expired. Please register again.' });
+      }
+      otp = Math.floor(100000 + Math.random() * 900000).toString();
+      pendingUser.otp = otp;
+      await pendingUser.save();
+    } else {
+      const user = await User.findOne({ email: normalizedEmail });
+      if (!user) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+      otp = user.generateOTP();
+      await user.save();
     }
-
-    if (otp_type === 'registration' && user.is_email_verified) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Email already verified' 
-      });
-    }
-
-    // Generate new OTP
-    const otp = user.generateOTP();
-    await user.save();
 
     // Send OTP email
     const emailResult = await sendOTPEmail(email, otp, otp_type);
 
     if (!emailResult.success) {
-      return res.status(500).json({ 
-        success: false, 
-        error: 'Failed to send OTP email' 
-      });
+      return res.status(500).json({ success: false, error: 'Failed to send OTP email' });
     }
 
     res.json({ 
