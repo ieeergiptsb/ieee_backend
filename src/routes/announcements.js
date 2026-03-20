@@ -3,6 +3,7 @@ import { body, validationResult } from 'express-validator';
 import { authenticate, requireAdminEmail } from '../middleware/auth.js';
 import Announcement from '../models/Announcement.js';
 import { uploadAnnouncementImage } from '../middleware/upload.js';
+import { cacheMiddleware } from '../middleware/cache.js';
 
 const router = express.Router();
 
@@ -75,7 +76,7 @@ router.post('/', authenticate, requireAdminEmail, uploadAnnouncementImage, creat
 });
 
 // Get all announcements (public, sorted by newest first)
-router.get('/', async (req, res) => {
+router.get('/', cacheMiddleware(300), async (req, res) => {
   try {
     const announcements = await Announcement.find()
       .populate('created_by', 'full_name email')
@@ -97,7 +98,7 @@ router.get('/', async (req, res) => {
 });
 
 // Get single announcement
-router.get('/:id', async (req, res) => {
+router.get('/:id', cacheMiddleware(300), async (req, res) => {
   try {
     const announcement = await Announcement.findById(req.params.id)
       .populate('created_by', 'full_name email');

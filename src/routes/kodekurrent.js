@@ -6,6 +6,7 @@ import KodekurrentTeam from '../models/KodekurrentTeam.js';
 import Announcement from '../models/Announcement.js';
 import { authenticate } from '../middleware/auth.js';
 import { sendTeamInviteEmail, sendTeamCompletionEmail } from '../utils/email.js';
+import { cacheMiddleware } from '../middleware/cache.js';
 
 const router = express.Router();
 
@@ -26,7 +27,7 @@ const normalizeEmail = (email) => {
 // PUBLIC: Get Kodekurrent Announcements
 // GET /kodekurrent/announcements
 // ─────────────────────────────────────────
-router.get('/announcements', async (req, res) => {
+router.get('/announcements', cacheMiddleware(300), async (req, res) => {
   try {
     const announcements = await Announcement.find(
       { category: 'kodekurrent' },  // filter by category; fallback: all if none set
@@ -46,7 +47,7 @@ router.get('/announcements', async (req, res) => {
 // PROTECTED: Get dashboard data for logged-in user
 // GET /kodekurrent/dashboard
 // ─────────────────────────────────────────
-router.get('/dashboard', authenticate, async (req, res) => {
+router.get('/dashboard', authenticate, cacheMiddleware(60), async (req, res) => {
   try {
     // Fire both queries in parallel with Promise.all for max throughput
     const [user, team, announcements] = await Promise.all([
@@ -262,7 +263,7 @@ router.get('/verify-team', authenticate, async (req, res) => {
 // PROTECTED: Get the current user's team
 // GET /kodekurrent/team
 // ─────────────────────────────────────────
-router.get('/team', authenticate, async (req, res) => {
+router.get('/team', authenticate, cacheMiddleware(60), async (req, res) => {
   try {
     const team = await KodekurrentTeam.findOne({
       $or: [

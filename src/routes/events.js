@@ -3,6 +3,7 @@ import { body, validationResult } from 'express-validator';
 import EventRegistration from '../models/EventRegistration.js';
 import { authenticate } from '../middleware/auth.js';
 import { sendRegistrationConfirmationEmail } from '../utils/email.js';
+import { cacheMiddleware } from '../middleware/cache.js';
 
 const router = express.Router();
 
@@ -105,7 +106,7 @@ router.post('/register', authenticate, registrationValidation, async (req, res) 
 });
 
 // Get user's event registrations
-router.get('/my-registrations', authenticate, async (req, res) => {
+router.get('/my-registrations', authenticate, cacheMiddleware(60), async (req, res) => {
   try {
     const registrations = await EventRegistration.find({
       user_id: req.userId,
@@ -127,7 +128,7 @@ router.get('/my-registrations', authenticate, async (req, res) => {
 });
 
 // Get specific registration
-router.get('/registration/:id', authenticate, async (req, res) => {
+router.get('/registration/:id', authenticate, cacheMiddleware(60), async (req, res) => {
   try {
     const registration = await EventRegistration.findOne({
       _id: req.params.id,
@@ -194,7 +195,7 @@ router.patch('/registration/:id/cancel', authenticate, async (req, res) => {
 });
 
 // Get all registrations for an event (Admin only)
-router.get('/event/:eventSlug/registrations', authenticate, async (req, res) => {
+router.get('/event/:eventSlug/registrations', authenticate, cacheMiddleware(30), async (req, res) => {
   try {
     // Check if user is admin
     if (req.user.role !== 'admin') {
