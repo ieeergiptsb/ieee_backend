@@ -9,6 +9,7 @@ import dashboardRoutes from './routes/dashboard.js';
 import adminRoutes from './routes/admin.js';
 import contactRoutes from './routes/contact.js';
 import announcementRoutes from './routes/announcements.js';
+import kodekurrentRoutes from './routes/kodekurrent.js';
 
 // Load environment variables
 dotenv.config();
@@ -25,6 +26,8 @@ const allowedOrigins = [
   process.env.FRONTEND_URL || 'http://localhost:3000',
   'https://ieeergipt.in',
   'https://www.ieeergipt.in',
+  'https://kodekurrent.ieeergipt.in',
+  'http://localhost:5173',
   'http://localhost:3000',
 ].filter(Boolean); // Remove any undefined values
 
@@ -75,6 +78,7 @@ app.use('/dashboard', dashboardRoutes);
 app.use('/admin', adminRoutes);
 app.use('/contact', contactRoutes);
 app.use('/announcements', announcementRoutes);
+app.use('/kodekurrent', kodekurrentRoutes);
 
 // 404 handler
 app.use((req, res) => {
