@@ -1,49 +1,30 @@
-import sgMail from '@sendgrid/mail';
+import { Resend } from 'resend';
 import { generateIDCard } from './idCardGenerator.js';
 
-// Check if SendGrid is configured
-const isSendGridConfigured = () => {
-  const apiKey = process.env.SENDGRID_API_KEY;
-  const isConfigured = !!apiKey && apiKey.startsWith('SG.');
-  return isConfigured;
-};
+let resendClient = null;
 
-// Initialize SendGrid
-let sendGridInitialized = false;
-let lastApiKey = null;
+const getResendClient = () => {
+  if (resendClient) return resendClient;
 
-const initializeSendGrid = () => {
-  const apiKey = process.env.SENDGRID_API_KEY;
-  
-  // Reinitialize if API key changed
-  if (sendGridInitialized && lastApiKey === apiKey) {
-    return;
-  }
-  
+  const apiKey = process.env.RESEND_API_KEY;
+
   if (!apiKey) {
-    throw new Error('SendGrid API key is not set. Please set SENDGRID_API_KEY environment variable.');
+    console.warn('⚠️ RESEND_API_KEY is not set. Emails will fail to send.');
   }
-  
-  if (!apiKey.startsWith('SG.')) {
-    throw new Error(`SendGrid API key format is invalid. API key should start with "SG." but got: ${apiKey.substring(0, 10)}...`);
-  }
-  
-  // Validate API key length (SendGrid keys are typically 69 characters)
-  if (apiKey.length < 50) {
-    console.warn('⚠️ SendGrid API key seems too short. Expected ~69 characters.');
-  }
-  
-  sgMail.setApiKey(apiKey);
-  lastApiKey = apiKey;
-  sendGridInitialized = true;
-  console.log('✅ SendGrid initialized successfully');
-  console.log(`📋 API Key: ${apiKey.substring(0, 10)}...${apiKey.substring(apiKey.length - 4)} (${apiKey.length} chars)`);
+
+  // If no API key is provided, we still instantiate it but it will throw on send.
+  resendClient = new Resend(apiKey || 'uninitialized');
+  return resendClient;
 };
 
-// Send OTP email via SendGrid
+const getFromEmail = () => {
+  return process.env.EMAIL_FROM || 'IEEE RGIPT <onboarding@resend.dev>';
+};
+
+// Send OTP email
 export const sendOTPEmail = async (email, otpCode, type = 'registration') => {
   try {
-    initializeSendGrid();
+    const resend = getResendClient();
     
     const subject = type === 'registration' 
       ? 'IEEE RGIPT - Email Verification Code'
@@ -90,36 +71,28 @@ export const sendOTPEmail = async (email, otpCode, type = 'registration') => {
       </html>
     `;
 
-    const msg = {
+    console.log(`📧 Sending OTP email via Resend to: ${email}`);
+    const { data, error } = await resend.emails.send({
+      from: getFromEmail(),
       to: email,
-      from: process.env.EMAIL_FROM || 'ieee_sb@rgipt.ac.in',
-      subject: subject,
-      html: html,
-    };
-
-    console.log(`📧 Sending OTP email via SendGrid to: ${email}`);
-    const result = await sgMail.send(msg);
-    console.log('✅ Email sent successfully via SendGrid');
-    return { success: true, messageId: result[0]?.headers['x-message-id'] };
-  } catch (error) {
-    const errorDetails = error.response?.body?.errors || [];
-    const errorMessage = errorDetails.length > 0 
-      ? errorDetails.map(e => e.message || e).join('; ')
-      : error.message;
+      subject,
+      html
+    });
     
-    console.error('❌ SendGrid error:', errorMessage);
-    console.error('Error code:', error.code);
-    if (error.code === 401) {
-      console.error('⚠️ SendGrid API key is invalid or unauthorized. Please check your SENDGRID_API_KEY environment variable.');
-    }
-    throw new Error(`SendGrid error: ${errorMessage}`);
+    if (error) throw new Error(error.message);
+
+    console.log('✅ Email sent successfully');
+    return { success: true, messageId: data?.id };
+  } catch (error) {
+    console.error('❌ Resend error:', error.message);
+    throw new Error(`Email error: ${error.message}`);
   }
 };
 
-// Send registration confirmation email via SendGrid
+// Send registration confirmation email
 export const sendRegistrationConfirmationEmail = async (email, eventName, teamName, userName = null, userPhoto = null, userCollege = null, userRollNo = null, membershipType = null, ieeeMembershipId = null) => {
   try {
-    initializeSendGrid();
+    const resend = getResendClient();
     
     // Check if this is CodeForHer event
     const isCodeForHer = eventName && (eventName.toLowerCase().includes('codeforher') || eventName.toLowerCase().includes('code for her'));
@@ -135,17 +108,11 @@ export const sendRegistrationConfirmationEmail = async (email, eventName, teamNa
           .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
           .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
           .success-box { background: #d4edda; border: 1px solid #c3e6cb; padding: 15px; border-radius: 8px; margin: 20px 0; }
-          .id-card-notice { background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin: 20px 0; }
-          .whatsapp-box { background: #25D366; border: 1px solid #20bd5a; padding: 15px; border-radius: 8px; margin: 20px 0; text-align: center; }
-          .whatsapp-box a { color: white; text-decoration: none; font-weight: bold; display: inline-block; padding: 10px 20px; background: rgba(255,255,255,0.2); border-radius: 5px; }
-          .whatsapp-box a:hover { background: rgba(255,255,255,0.3); }
         </style>
       </head>
       <body>
         <div class="container">
-          <div class="header">
-            <h1>IEEE RGIPT</h1>
-          </div>
+          <div class="header"><h1>IEEE RGIPT</h1></div>
           <div class="content">
             <h2>Event Registration Confirmed!</h2>
             <p>Hello ${userName || 'there'},</p>
@@ -154,426 +121,157 @@ export const sendRegistrationConfirmationEmail = async (email, eventName, teamNa
               <p><strong>Event:</strong> ${eventName}</p>
             </div>
             <p>Your registration for <strong>${eventName}</strong> has been confirmed successfully!</p>
-            <div class="id-card-notice">
-              <p><strong>📋 Your Event ID Card</strong></p>
-              <p>Please find your official event ID card attached to this email. You can print it or show it on your mobile device at the event venue.</p>
-            </div>
             ${isCodeForHer ? `
-            <div class="whatsapp-box">
-              <p style="color: white; margin-bottom: 10px;"><strong>📱 Join the Official WhatsApp Group</strong></p>
-              <p style="color: white; margin-bottom: 15px; font-size: 14px;">Join our WhatsApp group to receive problem statements, updates, and mentor allocations.</p>
-              <a href="${whatsappLink}" target="_blank" rel="noopener noreferrer">Join WhatsApp Group</a>
-            </div>
-            ` : ''}
-            <p>You will receive further instructions and updates via email. Please keep an eye on your inbox.</p>
-            <p>Thank you for participating!</p>
+            <div class="whatsapp-box" style="background: #25D366; padding: 15px; border-radius: 8px; text-align: center;">
+              <a href="${whatsappLink}" style="color: white; font-weight: bold; text-decoration: none;">Join WhatsApp Group</a>
+            </div>` : ''}
           </div>
         </div>
       </body>
       </html>
     `;
 
-    // Generate ID card
-    let idCardBuffer = null;
+    let attachments = [];
     try {
-      idCardBuffer = await generateIDCard({
+      const idCardBuffer = await generateIDCard({
         userName: userName || 'Participant',
-        userPhoto: userPhoto,
-        teamName: teamName,
-        eventName: eventName,
-        userCollege: userCollege,
-        userRollNo: userRollNo,
+        userPhoto, teamName, eventName, userCollege, userRollNo,
         membershipType: membershipType || 'non_member',
         ieeeMembershipId: ieeeMembershipId || null,
       });
-      console.log('✅ ID card generated successfully');
-    } catch (error) {
-      console.error('⚠️ Failed to generate ID card:', error.message);
-      // Continue without ID card if generation fails
-    }
-
-    const fromEmail = process.env.EMAIL_FROM || 'ieee_sb@rgipt.ac.in';
-    
-    // Validate sender email
-    if (!fromEmail || !fromEmail.includes('@')) {
-      throw new Error(`Invalid sender email: ${fromEmail}. Please set a valid EMAIL_FROM environment variable.`);
-    }
-    
-    const msg = {
-      to: email,
-      from: fromEmail,
-      subject: `Registration Confirmed - ${eventName}`,
-      html: html,
-    };
-    
-    console.log(`📤 Sender: ${fromEmail}, Recipient: ${email}`);
-
-    // Attach ID card if generated
-    if (idCardBuffer) {
-      msg.attachments = [
-        {
-          content: idCardBuffer.toString('base64'),
-          filename: `ID_Card_${eventName.replace(/[^a-z0-9]/gi, '_')}_${teamName.replace(/[^a-z0-9]/gi, '_')}.png`,
-          type: 'image/png',
-          disposition: 'attachment',
-        },
-      ];
-    }
-
-    console.log(`📧 Sending confirmation email via SendGrid to: ${email}`);
-    
-    try {
-      const result = await sgMail.send(msg);
-      console.log('✅ Email sent successfully via SendGrid');
-      console.log(`📬 Message ID: ${result[0]?.headers['x-message-id'] || 'N/A'}`);
-      return { success: true, messageId: result[0]?.headers['x-message-id'] };
-    } catch (sendError) {
-      const errorDetails = sendError.response?.body?.errors || [];
-      const errorMessage = errorDetails.length > 0 
-        ? errorDetails.map(e => `${e.message || e}${e.field ? ` (field: ${e.field})` : ''}`).join('; ')
-        : sendError.message;
-      
-      console.error('❌ Error sending confirmation email:', errorMessage);
-      console.error('Error code:', sendError.code);
-      console.error('Full error:', JSON.stringify(sendError.response?.body || sendError.message, null, 2));
-      
-      if (sendError.code === 401) {
-        console.error('\n⚠️ SendGrid Authentication Error - Possible causes:');
-        console.error('  1. API key is invalid, expired, or revoked');
-        console.error('  2. API key does not have "Mail Send" permissions');
-        console.error('  3. Sender email is not verified in SendGrid');
-        console.error('  4. API key was regenerated but server not restarted');
-        console.error('\n🔧 Troubleshooting steps:');
-        console.error('  1. Go to https://app.sendgrid.com/settings/api_keys');
-        console.error('  2. Verify your API key exists and has "Mail Send" permission');
-        console.error('  3. If needed, create a new API key with "Full Access" or "Mail Send" permission');
-        console.error('  4. Go to https://app.sendgrid.com/settings/sender_auth');
-        console.error('  5. Verify the sender email:', fromEmail);
-        console.error('  6. Restart your server after updating environment variables');
+      if (idCardBuffer) {
+        attachments.push({
+          filename: `ID_Card_${eventName.replace(/[^a-z0-9]/gi, '_')}.png`,
+          content: idCardBuffer
+        });
       }
-      
-      throw new Error(`SendGrid error: ${errorMessage}`);
+    } catch (e) {
+      console.error('⚠️ Failed to generate ID card:', e.message);
     }
+
+    console.log(`📧 Sending confirmation via Resend to: ${email}`);
+    const { data, error } = await resend.emails.send({
+      from: getFromEmail(),
+      to: email,
+      subject: `Registration Confirmed - ${eventName}`,
+      html,
+      attachments: attachments.length > 0 ? attachments : undefined
+    });
+    
+    if (error) throw new Error(error.message);
+
+    console.log('✅ Email sent successfully');
+    return { success: true, messageId: data?.id };
   } catch (error) {
-    console.error('❌ Error in sendRegistrationConfirmationEmail:', error.message);
+    console.error('❌ Resend error:', error.message);
     throw error;
   }
 };
 
-// Send password reset email via SendGrid
 export const sendPasswordResetEmail = async (email, resetToken) => {
   try {
-    initializeSendGrid();
-    
+    const resend = getResendClient();
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
     
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
-          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-          .button { display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
-          .warning-box { background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin: 20px 0; }
-          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>IEEE RGIPT</h1>
-          </div>
-          <div class="content">
-            <h2>Password Reset Request</h2>
-            <p>Hello,</p>
-            <p>We received a request to reset your password for your IEEE RGIPT account.</p>
-            <p>Click the button below to reset your password:</p>
-            <div style="text-align: center;">
-              <a href="${resetUrl}" class="button">Reset Password</a>
-            </div>
-            <p>Or copy and paste this link into your browser:</p>
-            <p style="word-break: break-all; color: #667eea;">${resetUrl}</p>
-            <div class="warning-box">
-              <p><strong>⚠️ Important:</strong></p>
-              <ul>
-                <li>This link will expire in <strong>1 hour</strong></li>
-                <li>If you didn't request this password reset, please ignore this email</li>
-                <li>Your password will remain unchanged if you don't click the link</li>
-              </ul>
-            </div>
-            <p>For security reasons, never share this link with anyone.</p>
-          </div>
-          <div class="footer">
-            <p>© 2025 IEEE Student Branch, RGIPT. All rights reserved.</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
+    const html = `<p>Click <a href="${resetUrl}">here</a> to reset your password.</p>`;
 
-    const msg = {
+    const { data, error } = await resend.emails.send({
+      from: getFromEmail(),
       to: email,
-      from: process.env.EMAIL_FROM || 'ieee_sb@rgipt.ac.in',
       subject: 'IEEE RGIPT - Password Reset Request',
-      html: html,
-    };
-
-    console.log(`📧 Sending password reset email via SendGrid to: ${email}`);
-    const result = await sgMail.send(msg);
-    console.log('✅ Email sent successfully via SendGrid');
-    return { success: true, messageId: result[0]?.headers['x-message-id'] };
-  } catch (error) {
-    const errorDetails = error.response?.body?.errors || [];
-    const errorMessage = errorDetails.length > 0 
-      ? errorDetails.map(e => e.message || e).join('; ')
-      : error.message;
+      html
+    });
     
-    console.error('❌ SendGrid error:', errorMessage);
-    console.error('Error code:', error.code);
-    if (error.code === 401) {
-      console.error('⚠️ SendGrid API key is invalid or unauthorized. Please check your SENDGRID_API_KEY environment variable.');
-    }
-    throw new Error(`SendGrid error: ${errorMessage}`);
+    if (error) throw new Error(error.message);
+
+    return { success: true, messageId: data?.id };
+  } catch (error) {
+    throw new Error(`Email error: ${error.message}`);
   }
 };
 
-// Send contact form email via SendGrid
 export const sendContactFormEmail = async ({ fromName, fromEmail, subject, message }) => {
   try {
-    initializeSendGrid();
-    
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
-          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-          .info-box { background: white; border-left: 4px solid #667eea; padding: 15px; margin: 15px 0; }
-          .message-box { background: #f0f0f0; padding: 15px; border-radius: 8px; margin: 20px 0; }
-          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>IEEE RGIPT - New Contact Form Submission</h1>
-          </div>
-          <div class="content">
-            <h2>You have received a new message from the website contact form</h2>
-            
-            <div class="info-box">
-              <p><strong>From:</strong> ${fromName}</p>
-              <p><strong>Email:</strong> <a href="mailto:${fromEmail}">${fromEmail}</a></p>
-              <p><strong>Subject:</strong> ${subject}</p>
-            </div>
-            
-            <div class="message-box">
-              <p><strong>Message:</strong></p>
-              <p>${message.replace(/\n/g, '<br>')}</p>
-            </div>
-            
-            <p style="margin-top: 20px;">
-              <strong>Reply to:</strong> <a href="mailto:${fromEmail}">${fromEmail}</a>
-            </p>
-          </div>
-          <div class="footer">
-            <p>© 2025 IEEE Student Branch, RGIPT. All rights reserved.</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
+    const resend = getResendClient();
+    const html = `<p>From: ${fromName} (${fromEmail})</p><p>${message}</p>`;
 
-    const msg = {
+    const { data, error } = await resend.emails.send({
+      from: getFromEmail(),
       to: 'ieee_sb@rgipt.ac.in',
-      from: process.env.EMAIL_FROM || 'ieee_sb@rgipt.ac.in',
-      replyTo: fromEmail,
+      reply_to: fromEmail,
       subject: `[Contact Form] ${subject}`,
-      html: html,
-    };
-
-    console.log(`📧 Sending contact form email via SendGrid from: ${fromEmail}`);
-    const result = await sgMail.send(msg);
-    console.log('✅ Contact form email sent successfully via SendGrid');
-    return { success: true, messageId: result[0]?.headers['x-message-id'] };
-  } catch (error) {
-    const errorDetails = error.response?.body?.errors || [];
-    const errorMessage = errorDetails.length > 0 
-      ? errorDetails.map(e => e.message || e).join('; ')
-      : error.message;
+      html
+    });
     
-    console.error('❌ SendGrid error:', errorMessage);
-    console.error('Error code:', error.code);
-    if (error.code === 401) {
-      console.error('⚠️ SendGrid API key is invalid or unauthorized. Please check your SENDGRID_API_KEY environment variable.');
-    }
-    throw new Error(`SendGrid error: ${errorMessage}`);
+    if (error) throw new Error(error.message);
+
+    return { success: true, messageId: data?.id };
+  } catch (error) {
+    throw new Error(`Email error: ${error.message}`);
   }
 };
 
-// Send team invitation email
 export const sendTeamInviteEmail = async (email, teamName, inviteToken) => {
   try {
-    initializeSendGrid();
-    
-    // Fallback to front-end base URL if environment variable missing
+    const resend = getResendClient();
     const frontendUrl = process.env.KODEKURRENT_FRONTEND_URL || 'https://kodekurrent.ieeergipt.in';
     const verifyUrl = `${frontendUrl}/verify-team?token=${inviteToken}`;
     
     const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, #10b981 0%, #14b8a6 100%); color: black; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
-          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-          .button { display: inline-block; padding: 12px 30px; background: #10b981; color: black !important; font-weight: bold; text-decoration: none; border-radius: 5px; margin: 20px 0; }
-          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1 style="color: white;">KodeKurrent 2.0 Hackathon</h1>
-          </div>
-          <div class="content">
-            <h2>You've been invited to join a team!</h2>
-            <p>Hello,</p>
-            <p>You have been invited to join the team <strong>${teamName}</strong> for the KodeKurrent 2.0 Hackathon organized by IEEE RGIPT.</p>
-            <p>Click the button below to accept the invitation and verify your spot in the team. If you don't have an account yet, you will be prompted to create one.</p>
-            <div style="text-align: center;">
-              <a href="${verifyUrl}" class="button">Accept Invitation</a>
-            </div>
-            <p>Or copy and paste this link into your browser:</p>
-            <p style="word-break: break-all; color: #10b981;">${verifyUrl}</p>
-          </div>
-          <div class="footer">
-            <p>© 2025 IEEE Student Branch, RGIPT. All rights reserved.</p>
-          </div>
-        </div>
-      </body>
-      </html>
+      <p>You have been invited to join the team <strong>${teamName}</strong> for the KodeKurrent 2.0 Hackathon.</p>
+      <p>Click <a href="${verifyUrl}">here</a> to accept the invitation.</p>
     `;
 
-    const msg = {
+    const { data, error } = await resend.emails.send({
+      from: getFromEmail(),
       to: email,
-      from: process.env.EMAIL_FROM || 'ieee_sb@rgipt.ac.in',
       subject: `KodeKurrent 2.0 - Team Invitation: ${teamName}`,
-      html: html,
-    };
+      html
+    });
+    
+    if (error) throw new Error(error.message);
 
-    console.log(`📧 Sending team invite via SendGrid to: ${email}`);
-    const result = await sgMail.send(msg);
-    return { success: true, messageId: result[0]?.headers['x-message-id'] };
+    return { success: true, messageId: data?.id };
   } catch (error) {
-    console.error('❌ SendGrid error:', error.message);
-    throw new Error(`SendGrid error: ${error.message}`);
+    throw new Error(`Email error: ${error.message}`);
   }
 };
 
-// Send final completion email to Team Lead
 export const sendTeamCompletionEmail = async (email, teamName) => {
   try {
-    initializeSendGrid();
-    
-    const whatsappLink = 'https://chat.whatsapp.com/KodeKurrentGroupPlaceholder';
-    const discordLink = 'https://discord.gg/KodeKurrentServerPlaceholder';
-    
+    const resend = getResendClient();
     const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, #10b981 0%, #14b8a6 100%); color: black; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
-          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-          .success-box { background: #d1fae5; border: 1px solid #34d399; padding: 15px; border-radius: 8px; margin: 20px 0; }
-          .social-box { margin-bottom: 20px; text-align: left; }
-          .social-btn { display: inline-block; padding: 10px 20px; color: white !important; font-weight: bold; text-decoration: none; border-radius: 5px; margin-right: 10px; }
-          .whatsapp { background-color: #25D366; }
-          .discord { background-color: #5865F2; }
-          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1 style="color: white;">KodeKurrent 2.0 Hackathon</h1>
-          </div>
-          <div class="content">
-            <h2>Your Team is Ready!</h2>
-            <p>Hello Team Leader,</p>
-            <div class="success-box">
-              <p>Great news! All members of team <strong>${teamName}</strong> have verified their invitations.</p>
-              <p>Your team registration is now officially <strong>COMPLETE</strong>.</p>
-            </div>
-            
-            <h3>Next Steps</h3>
-            <p>Please share the following communication links with your team members. These are mandatory for all announcements, problem statements, and mentor allocations.</p>
-            
-            <div class="social-box">
-              <a href="${whatsappLink}" class="social-btn whatsapp">Join WhatsApp</a>
-              <a href="${discordLink}" class="social-btn discord">Join Discord</a>
-            </div>
-            
-            <p>Best of luck in the hackathon!</p>
-          </div>
-          <div class="footer">
-            <p>© 2025 IEEE Student Branch, RGIPT. All rights reserved.</p>
-          </div>
-        </div>
-      </body>
-      </html>
+      <p>Great news! All members of team <strong>${teamName}</strong> have verified their invitations.</p>
+      <p><a href="https://chat.whatsapp.com/KodeKurrentGroupPlaceholder">Join WhatsApp</a></p>
+      <p><a href="https://discord.gg/KodeKurrentServerPlaceholder">Join Discord</a></p>
     `;
 
-    const msg = {
+    const { data, error } = await resend.emails.send({
+      from: getFromEmail(),
       to: email,
-      from: process.env.EMAIL_FROM || 'ieee_sb@rgipt.ac.in',
       subject: `KodeKurrent 2.0 - Team ${teamName} Verified & Complete!`,
-      html: html,
-    };
+      html
+    });
+    
+    if (error) throw new Error(error.message);
 
-    console.log(`📧 Sending team completion email via SendGrid to: ${email}`);
-    const result = await sgMail.send(msg);
-    return { success: true, messageId: result[0]?.headers['x-message-id'] };
+    return { success: true, messageId: data?.id };
   } catch (error) {
-    console.error('❌ SendGrid error:', error.message);
-    throw new Error(`SendGrid error: ${error.message}`);
+    throw new Error(`Email error: ${error.message}`);
   }
 };
 
-// Test SendGrid configuration (for debugging)
-export const testSendGridConnection = async () => {
+export const testEmailConnection = async () => {
   try {
-    initializeSendGrid();
-    
-    const apiKey = process.env.SENDGRID_API_KEY;
-    const fromEmail = process.env.EMAIL_FROM || 'ieee_sb@rgipt.ac.in';
-    
-    console.log('\n🔍 SendGrid Configuration Test:');
-    console.log(`   API Key: ${apiKey ? `${apiKey.substring(0, 10)}...${apiKey.substring(apiKey.length - 4)} (${apiKey.length} chars)` : 'NOT SET'}`);
-    console.log(`   Sender Email: ${fromEmail}`);
-    console.log(`   Initialized: ${sendGridInitialized}`);
-    
-    console.log('\n✅ SendGrid is configured correctly.');
-    console.log('⚠️  If you still get 401 errors, check:');
-    console.log('   1. Sender email is verified: https://app.sendgrid.com/settings/sender_auth');
-    console.log('   2. API key has "Mail Send" permission: https://app.sendgrid.com/settings/api_keys');
-    console.log('   3. Server was restarted after setting environment variables\n');
-    
-    return { success: true, apiKeySet: !!apiKey, senderEmail: fromEmail };
+    const resend = getResendClient();
+    if (!process.env.RESEND_API_KEY) {
+      throw new Error("RESEND_API_KEY is not defined");
+    }
+    console.log('✅ Resend is configured correctly.');
+    return { success: true };
   } catch (error) {
-    console.error('❌ SendGrid configuration test failed:', error.message);
+    console.error('❌ Resend configuration test failed:', error.message);
     return { success: false, error: error.message };
   }
 };
