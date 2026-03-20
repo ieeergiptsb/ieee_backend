@@ -1,9 +1,11 @@
 import express from 'express';
 import mongoose from 'mongoose';
+import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import KodekurrentTeam from '../models/KodekurrentTeam.js';
 import Announcement from '../models/Announcement.js';
 import { authenticate } from '../middleware/auth.js';
+import { sendTeamInviteEmail, sendTeamCompletionEmail } from '../utils/email.js';
 
 const router = express.Router();
 
@@ -82,8 +84,7 @@ router.get('/dashboard', authenticate, async (req, res) => {
 // ─────────────────────────────────────────
 // PROTECTED: Register a hackathon team
 // POST /kodekurrent/register-team
-// Body: { team_name, member_emails: string[] (2-4 total) }
-// The requesting user is always included as team lead
+// Body: { team_name, member_emails: string[] (2-4 total including lead) }
 // ─────────────────────────────────────────
 router.post('/register-team', authenticate, async (req, res) => {
   try {
@@ -93,84 +94,52 @@ router.post('/register-team', authenticate, async (req, res) => {
       return res.status(400).json({ success: false, error: 'A valid team name is required (min 2 chars).' });
     }
 
-    // Normalize all emails
-    const normalizedMemberEmails = member_emails.map(normalizeEmail);
-
-    // Build a deduplicated set of all participants (lead + members)
+    const normalizedMemberEmails = member_emails.map(normalizeEmail).filter(e => e);
     const leadEmail = normalizeEmail(req.user.email);
     const allEmails = [...new Set([leadEmail, ...normalizedMemberEmails])];
 
     if (allEmails.length < 2 || allEmails.length > 4) {
       return res.status(400).json({
         success: false,
-        error: 'Team must have between 2 and 4 members (including yourself).',
+        error: 'Team must have between 2 and 4 valid members (including yourself).',
       });
     }
 
-    // Parallel check: does team name exist + is lead already in a team + do all member emails exist?
-    const [existingTeamByName, leadTeam, memberUsers] = await Promise.all([
+    // Parallel check: team name exists? is anyone in allEmails already in a team?
+    const [existingTeamByName, conflictingTeam] = await Promise.all([
       KodekurrentTeam.findOne({ team_name: team_name.trim() }).lean(),
       KodekurrentTeam.findOne({
         $or: [
-          { team_lead: req.userId },
-          { 'members.user': req.userId },
-        ],
+          { 'members.email': { $in: allEmails } },
+          { 'members.user': req.userId }
+        ]
       }).lean(),
-      User.find({ email: { $in: allEmails } })
-        .select('_id email full_name roll_no is_email_verified')
-        .lean(),
     ]);
 
     if (existingTeamByName) {
       return res.status(409).json({ success: false, error: 'Team name already taken. Please choose another.' });
     }
 
-    if (leadTeam) {
-      return res.status(409).json({ success: false, error: 'You are already registered in a team.' });
-    }
-
-    // Validate all emails are known registered users
-    const foundEmails = new Set(memberUsers.map(u => u.email));
-    const missingEmails = allEmails.filter(e => !foundEmails.has(e));
-    if (missingEmails.length > 0) {
-      return res.status(400).json({
-        success: false,
-        error: `These member emails are not registered: ${missingEmails.join(', ')}. All members must be registered users.`,
-      });
-    }
-
-    // Verify all members have verified emails
-    const unverified = memberUsers.filter(u => !u.is_email_verified);
-    if (unverified.length > 0) {
-      return res.status(400).json({
-        success: false,
-        error: `These members have unverified accounts: ${unverified.map(u => u.email).join(', ')}. All members must verify their email first.`,
-      });
-    }
-
-    // Check if any member is already in another team
-    const memberUserIds = memberUsers.map(u => u._id);
-    const conflictingTeam = await KodekurrentTeam.findOne({
-      $or: [
-        { team_lead: { $in: memberUserIds } },
-        { 'members.user': { $in: memberUserIds } },
-      ],
-    }).lean();
-
     if (conflictingTeam) {
       return res.status(409).json({
         success: false,
-        error: `One or more team members are already registered in another team ("${conflictingTeam.team_name}"). Each user can only be in one team.`,
+        error: `One or more emails are already associated with a team ("${conflictingTeam.team_name}"). Each person can only be in one team.`
       });
     }
 
-    // Build members array
-    const membersData = memberUsers.map(u => ({
-      user: u._id,
-      email: u.email,
-      full_name: u.full_name,
-      roll_no: u.roll_no || '',
-    }));
+    // Build members array - Lead is Verified, others are Pending
+    const membersData = allEmails.map(email => {
+      if (email === leadEmail) {
+        return {
+          email,
+          user: req.userId,
+          full_name: req.user.full_name,
+          roll_no: req.user.roll_no || '',
+          status: 'Verified'
+        };
+      }
+      return { email, status: 'Pending' };
+    });
 
     const team = new KodekurrentTeam({
       team_name: team_name.trim(),
@@ -180,9 +149,18 @@ router.post('/register-team', authenticate, async (req, res) => {
 
     await team.save();
 
+    // Generate JWTs and send invite emails asynchronously
+    const jwtSecret = process.env.JWT_SECRET || 'ieee_rgipt_super_secret_jwt_key_2025_change_in_production';
+    normalizedMemberEmails.forEach(email => {
+      if (email !== leadEmail) {
+        const token = jwt.sign({ email, teamId: team._id }, jwtSecret, { expiresIn: '7d' });
+        sendTeamInviteEmail(email, team.team_name, token).catch(err => console.error('Invite email failed:', err));
+      }
+    });
+
     res.status(201).json({
       success: true,
-      message: 'Team registered successfully!',
+      message: 'Team registered! Invite emails sent to your teammates.',
       team,
     });
   } catch (error) {
@@ -190,7 +168,93 @@ router.post('/register-team', authenticate, async (req, res) => {
     if (error.code === 11000) {
       return res.status(409).json({ success: false, error: 'Team name already taken.' });
     }
-    res.status(500).json({ success: false, error: 'Failed to register team. Please try again.' });
+    res.status(500).json({ success: false, error: 'Failed to register team.' });
+  }
+});
+
+// ─────────────────────────────────────────
+// PROTECTED: Verify Team Invitation
+// GET /kodekurrent/verify-team?token=...
+// ─────────────────────────────────────────
+router.get('/verify-team', authenticate, async (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token) {
+      return res.status(400).json({ success: false, error: 'Missing token.' });
+    }
+
+    const jwtSecret = process.env.JWT_SECRET || 'ieee_rgipt_super_secret_jwt_key_2025_change_in_production';
+    let decoded;
+    try {
+      decoded = jwt.verify(token, jwtSecret);
+    } catch (err) {
+      return res.status(400).json({ success: false, error: 'Invalid or expired invitation token.' });
+    }
+
+    const inviteEmail = normalizeEmail(decoded.email);
+    const userEmail = normalizeEmail(req.user.email);
+
+    if (inviteEmail !== userEmail) {
+      return res.status(403).json({ 
+        success: false, 
+        error: `This invite was sent to ${inviteEmail}, but you are logged in as ${userEmail}. Please login with the correct account.` 
+      });
+    }
+
+    const team = await KodekurrentTeam.findById(decoded.teamId);
+    if (!team) {
+      return res.status(404).json({ success: false, error: 'Team no longer exists.' });
+    }
+
+    // Check if user is already in another team
+    const existingTeam = await KodekurrentTeam.findOne({
+      _id: { $ne: team._id },
+      $or: [
+        { 'members.user': req.userId },
+        { 'members.email': userEmail }
+      ]
+    }).lean();
+
+    if (existingTeam) {
+      return res.status(409).json({ success: false, error: `You are already in another team ("${existingTeam.team_name}").` });
+    }
+
+    const memberIndex = team.members.findIndex(m => m.email === userEmail);
+    if (memberIndex === -1) {
+      return res.status(404).json({ success: false, error: 'You are no longer invited to this team.' });
+    }
+
+    if (team.members[memberIndex].status === 'Verified') {
+      return res.json({ success: true, message: 'You are already verified in this team.' });
+    }
+
+    // Update member to Verified
+    team.members[memberIndex].status = 'Verified';
+    team.members[memberIndex].user = req.userId;
+    team.members[memberIndex].full_name = req.user.full_name;
+    team.members[memberIndex].roll_no = req.user.roll_no || '';
+
+    // Check if all members are now verified
+    const allVerified = team.members.every(m => m.status === 'Verified');
+
+    await team.save();
+
+    // If all verified, send completion email to team lead
+    if (allVerified) {
+      const leadUser = await User.findById(team.team_lead).lean();
+      if (leadUser) {
+        sendTeamCompletionEmail(leadUser.email, team.team_name).catch(err => console.error('Completion email failed:', err));
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Successfully verified and joined the team!',
+      allVerified
+    });
+  } catch (error) {
+    console.error('Verify team error:', error);
+    res.status(500).json({ success: false, error: 'Failed to verify team invitation.' });
   }
 });
 

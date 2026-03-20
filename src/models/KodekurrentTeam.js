@@ -1,25 +1,31 @@
 import mongoose from 'mongoose';
 
 const teamMemberSchema = new mongoose.Schema({
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-  },
   email: {
     type: String,
     required: true,
     lowercase: true,
     trim: true,
   },
+  status: {
+    type: String,
+    enum: ['Pending', 'Verified'],
+    default: 'Pending'
+  },
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: false, // Optional until they verify
+  },
   full_name: {
     type: String,
-    required: true,
     trim: true,
+    required: false,
   },
   roll_no: {
     type: String,
     trim: true,
+    required: false,
   },
 }, { _id: false });
 

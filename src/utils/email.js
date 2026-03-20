@@ -418,6 +418,140 @@ export const sendContactFormEmail = async ({ fromName, fromEmail, subject, messa
   }
 };
 
+// Send team invitation email
+export const sendTeamInviteEmail = async (email, teamName, inviteToken) => {
+  try {
+    initializeSendGrid();
+    
+    // Fallback to front-end base URL if environment variable missing
+    const frontendUrl = process.env.KODEKURRENT_FRONTEND_URL || 'https://kodekurrent.ieeergipt.in';
+    const verifyUrl = `${frontendUrl}/verify-team?token=${inviteToken}`;
+    
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #10b981 0%, #14b8a6 100%); color: black; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .button { display: inline-block; padding: 12px 30px; background: #10b981; color: black !important; font-weight: bold; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1 style="color: white;">KodeKurrent 2.0 Hackathon</h1>
+          </div>
+          <div class="content">
+            <h2>You've been invited to join a team!</h2>
+            <p>Hello,</p>
+            <p>You have been invited to join the team <strong>${teamName}</strong> for the KodeKurrent 2.0 Hackathon organized by IEEE RGIPT.</p>
+            <p>Click the button below to accept the invitation and verify your spot in the team. If you don't have an account yet, you will be prompted to create one.</p>
+            <div style="text-align: center;">
+              <a href="${verifyUrl}" class="button">Accept Invitation</a>
+            </div>
+            <p>Or copy and paste this link into your browser:</p>
+            <p style="word-break: break-all; color: #10b981;">${verifyUrl}</p>
+          </div>
+          <div class="footer">
+            <p>© 2025 IEEE Student Branch, RGIPT. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const msg = {
+      to: email,
+      from: process.env.EMAIL_FROM || 'ieee_sb@rgipt.ac.in',
+      subject: `KodeKurrent 2.0 - Team Invitation: ${teamName}`,
+      html: html,
+    };
+
+    console.log(`📧 Sending team invite via SendGrid to: ${email}`);
+    const result = await sgMail.send(msg);
+    return { success: true, messageId: result[0]?.headers['x-message-id'] };
+  } catch (error) {
+    console.error('❌ SendGrid error:', error.message);
+    throw new Error(`SendGrid error: ${error.message}`);
+  }
+};
+
+// Send final completion email to Team Lead
+export const sendTeamCompletionEmail = async (email, teamName) => {
+  try {
+    initializeSendGrid();
+    
+    const whatsappLink = 'https://chat.whatsapp.com/KodeKurrentGroupPlaceholder';
+    const discordLink = 'https://discord.gg/KodeKurrentServerPlaceholder';
+    
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #10b981 0%, #14b8a6 100%); color: black; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .success-box { background: #d1fae5; border: 1px solid #34d399; padding: 15px; border-radius: 8px; margin: 20px 0; }
+          .social-box { margin-bottom: 20px; text-align: left; }
+          .social-btn { display: inline-block; padding: 10px 20px; color: white !important; font-weight: bold; text-decoration: none; border-radius: 5px; margin-right: 10px; }
+          .whatsapp { background-color: #25D366; }
+          .discord { background-color: #5865F2; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1 style="color: white;">KodeKurrent 2.0 Hackathon</h1>
+          </div>
+          <div class="content">
+            <h2>Your Team is Ready!</h2>
+            <p>Hello Team Leader,</p>
+            <div class="success-box">
+              <p>Great news! All members of team <strong>${teamName}</strong> have verified their invitations.</p>
+              <p>Your team registration is now officially <strong>COMPLETE</strong>.</p>
+            </div>
+            
+            <h3>Next Steps</h3>
+            <p>Please share the following communication links with your team members. These are mandatory for all announcements, problem statements, and mentor allocations.</p>
+            
+            <div class="social-box">
+              <a href="${whatsappLink}" class="social-btn whatsapp">Join WhatsApp</a>
+              <a href="${discordLink}" class="social-btn discord">Join Discord</a>
+            </div>
+            
+            <p>Best of luck in the hackathon!</p>
+          </div>
+          <div class="footer">
+            <p>© 2025 IEEE Student Branch, RGIPT. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const msg = {
+      to: email,
+      from: process.env.EMAIL_FROM || 'ieee_sb@rgipt.ac.in',
+      subject: `KodeKurrent 2.0 - Team ${teamName} Verified & Complete!`,
+      html: html,
+    };
+
+    console.log(`📧 Sending team completion email via SendGrid to: ${email}`);
+    const result = await sgMail.send(msg);
+    return { success: true, messageId: result[0]?.headers['x-message-id'] };
+  } catch (error) {
+    console.error('❌ SendGrid error:', error.message);
+    throw new Error(`SendGrid error: ${error.message}`);
+  }
+};
+
 // Test SendGrid configuration (for debugging)
 export const testSendGridConnection = async () => {
   try {

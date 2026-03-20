@@ -62,6 +62,11 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+// Root endpoint (useful for UptimeRobot)
+app.get('/', (req, res) => {
+  res.status(200).send('IEEE RGIPT API is running');
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ 
