@@ -6,12 +6,9 @@ import { generateToken } from '../utils/jwt.js';
 import { sendOTPEmail, sendPasswordResetEmail } from '../utils/email.js';
 import { authenticate } from '../middleware/auth.js';
 import { uploadProfilePicture } from '../middleware/upload.js';
-import { getEmailToDesignationMap, TEAM_STRUCTURE } from '../data/team-structure.js';
+import { isMemberEmail, getMemberDesignation } from '../utils/memberEmails.js';
 
 const router = express.Router();
-
-// Get email to designation mapping from team structure
-const AUTHORIZED_IEEE_MEMBER_EMAILS = getEmailToDesignationMap();
 
 // Normalize email for comparison (handles Gmail dots)
 const normalizeEmailForComparison = (email) => {
@@ -23,6 +20,7 @@ const normalizeEmailForComparison = (email) => {
   }
   return normalized;
 };
+
 
 // Validation middleware
 const registerValidation = [
@@ -119,20 +117,16 @@ router.post('/register/initiate', uploadProfilePicture, registerValidation, asyn
     }
 
     // Auto-assign designation for authorized IEEE members based on email
+    // Checks both email.json whitelist AND team-structure committee members
     let userDesignation = '';
     if (membership_type === 'ieee_member') {
-      const normalizedForCheck = normalizeEmailForComparison(normalizedEmail);
-      const authorizedEmail = Object.keys(AUTHORIZED_IEEE_MEMBER_EMAILS).find(
-        authEmail => normalizeEmailForComparison(authEmail) === normalizedForCheck
-      );
-      
-      if (!authorizedEmail) {
+      if (!isMemberEmail(normalizedEmail)) {
         return res.status(403).json({ 
           success: false, 
-          error: 'Only authorized emails can register as IEEE members. Please contact admin for authorization or register as a non-member.' 
+          error: 'Only authorized IEEE member emails can register as IEEE members. Please contact admin for authorization or register as a non-member.' 
         });
       }
-      userDesignation = AUTHORIZED_IEEE_MEMBER_EMAILS[authorizedEmail];
+      userDesignation = getMemberDesignation(normalizedEmail) || 'Member';
     }
     
     // Create userData object to store in PendingUser
