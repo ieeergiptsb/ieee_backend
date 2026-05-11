@@ -15,6 +15,9 @@ import adminRoutes from './routes/admin.js';
 import contactRoutes from './routes/contact.js';
 import announcementRoutes from './routes/announcements.js';
 import kodekurrentRoutes from './routes/kodekurrent.js';
+import bootcampRoutes from './routes/bootcamp.js';
+import bootcampAdminRoutes from './routes/bootcampAdmin.js';
+import { authenticate, requireAdminEmail } from './middleware/auth.js';
 import rateLimit from 'express-rate-limit';
 
 // ─── Load environment variables ───────────────────────────────────────────────
@@ -136,6 +139,8 @@ async function startServer() {
   app.use('/contact', contactRoutes);
   app.use('/announcements', announcementRoutes);
   app.use('/kodekurrent', kodekurrentRoutes);
+  app.use('/bootcamp', bootcampRoutes);
+  app.use('/admin/bootcamp', authenticate, requireAdminEmail, bootcampAdminRoutes);
 
   // ─── 404 handler ─────────────────────────────────────────────────────────
   app.use((_req, res) =>

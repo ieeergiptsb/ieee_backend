@@ -238,6 +238,56 @@ export const sendTeamInviteEmail = async (email, teamName, inviteToken) => {
   }
 };
 
+/** Bootcamp / program registration — no ID card attachment (keeps email lightweight). */
+export const sendBootcampRegistrationConfirmationEmail = async (
+  email,
+  eventTitle,
+  userName,
+  dashboardUrl
+) => {
+  try {
+    const resend = getResendClient();
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .btn { display: inline-block; margin-top: 16px; padding: 12px 24px; background: #667eea; color: white !important; text-decoration: none; border-radius: 8px; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header"><h1>IEEE RGIPT</h1></div>
+          <div class="content">
+            <h2>You’re in — ${eventTitle}</h2>
+            <p>Hello ${userName || 'there'},</p>
+            <p>Your registration for <strong>${eventTitle}</strong> is confirmed. We’re glad to have you in this program.</p>
+            <p><strong>What’s next:</strong> check your dashboard for program materials, announcements, and session updates as they are posted.</p>
+            <a class="btn" href="${dashboardUrl}">Open your dashboard</a>
+            <p style="margin-top:24px;font-size:13px;color:#666;">If the button does not work, copy this link: ${dashboardUrl}</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+    const { data, error } = await resend.emails.send({
+      from: getFromEmail(),
+      to: email,
+      subject: `Registered — ${eventTitle} | IEEE RGIPT`,
+      html,
+    });
+    if (error) throw new Error(error.message);
+    return { success: true, messageId: data?.id };
+  } catch (error) {
+    console.error('Bootcamp confirmation email error:', error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 export const sendTeamCompletionEmail = async (email, teamName) => {
   try {
     const resend = getResendClient();
