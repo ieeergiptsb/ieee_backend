@@ -1,23 +1,23 @@
-import { createCanvas, loadImage, registerFont } from 'canvas';
+// canvas is lazy-loaded on first use to avoid loading ~150 MB of native
+// libs (Cairo, Pango, libjpeg) at startup for every process — this alone
+// was the primary cause of the memory-limit crashes on Render.
+let _canvas = null;
+async function getCanvas() {
+  if (!_canvas) {
+    _canvas = await import('canvas');
+  }
+  return _canvas;
+}
+
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import https from 'https';
 import http from 'http';
 
-// Get the directory of the current module
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '../../../');
-
-// ⬇️ REGISTER CUSTOM FONT (Playfair Display Bold)
-// Ensure 'PlayfairDisplay-Bold.ttf' is in backend/public/fonts/
-const fontPath = path.join(projectRoot, 'backend/public/fonts/PlayfairDisplay-Bold.ttf');
-if (fs.existsSync(fontPath)) {
-  registerFont(fontPath, { family: 'Playfair Display', weight: 'bold' });
-} else {
-  console.warn('⚠️ Playfair Display font not found at:', fontPath);
-}
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
@@ -55,6 +55,15 @@ const fetchImageFromUrl = (url) => {
 };
 
 export async function generateIDCard({ userName, userPhoto, teamName, eventName, userCollege, userRollNo, membershipType, ieeeMembershipId, userDesignation }) {
+  // Lazy-load canvas only when actually generating an ID card
+  const { createCanvas, loadImage, registerFont } = await getCanvas();
+
+  // Register font on first use (safe to call multiple times)
+  const fontPath = path.join(projectRoot, 'backend/public/fonts/PlayfairDisplay-Bold.ttf');
+  if (fs.existsSync(fontPath)) {
+    try { registerFont(fontPath, { family: 'Playfair Display', weight: 'bold' }); } catch {}
+  }
+
   // 1. PATH SETUP
   const isMemberCard = teamName === 'IEEE Member' || teamName === 'Member' || (membershipType && (eventName === 'IEEE Student Branch, RGIPT' || !eventName || eventName.includes('IEEE Student Branch')));
   const isCodeForHer = eventName && (eventName.toLowerCase().includes('codeforher') || eventName.toLowerCase().includes('code for her'));

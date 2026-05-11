@@ -21,27 +21,32 @@ import rateLimit from 'express-rate-limit';
 dotenv.config();
 
 const PORT = process.env.PORT || 8000;
-const NUM_CPUS = os.cpus().length;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
-// ─── Cluster Mode (primary process) ───────────────────────────────────────────
-// On bare-metal / VPS: spawn one worker per CPU core for true parallelism.
-// On managed platforms (Render, Heroku, Railway) that already load-balance
-// across dynos, set DISABLE_CLUSTER=true in the env to skip this.
-if (cluster.isPrimary && IS_PRODUCTION && !process.env.DISABLE_CLUSTER) {
-  console.log(`[Primary ${process.pid}] Starting ${NUM_CPUS} workers...`);
+// ─── Cluster Mode ─────────────────────────────────────────────────────────────
+// Disabled by default — managed platforms (Render, Railway, Heroku) already
+// load-balance across instances, and spawning multiple workers on a small
+// instance multiplies memory usage (especially canvas ~150 MB per worker).
+// To enable: set ENABLE_CLUSTER=true AND optionally WEB_CONCURRENCY=N in env.
+const ENABLE_CLUSTER = process.env.ENABLE_CLUSTER === 'true';
+const NUM_WORKERS = Math.min(
+  parseInt(process.env.WEB_CONCURRENCY || '1', 10),
+  os.cpus().length
+);
 
-  for (let i = 0; i < NUM_CPUS; i++) {
+if (cluster.isPrimary && IS_PRODUCTION && ENABLE_CLUSTER && NUM_WORKERS > 1) {
+  console.log(`[Primary ${process.pid}] Starting ${NUM_WORKERS} workers...`);
+
+  for (let i = 0; i < NUM_WORKERS; i++) {
     cluster.fork();
   }
 
   cluster.on('exit', (worker, code, signal) => {
     console.warn(`[Primary] Worker ${worker.process.pid} died (${signal || code}). Restarting…`);
-    cluster.fork(); // auto-restart on crash
+    cluster.fork();
   });
 
 } else {
-  // ─── Worker process (or dev mode) ─────────────────────────────────────────
   startServer();
 }
 

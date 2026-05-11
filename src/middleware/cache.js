@@ -1,7 +1,8 @@
 import NodeCache from 'node-cache';
 
-// Initialize cache with default TTL of 5 minutes (300 seconds)
-const cache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
+// maxKeys caps memory: at most 200 cached responses in process at any time.
+// checkperiod runs cleanup every 60 s so expired entries are freed promptly.
+const cache = new NodeCache({ stdTTL: 300, checkperiod: 60, maxKeys: 200 });
 
 export const cacheMiddleware = (duration) => {
   return (req, res, next) => {
@@ -23,14 +24,19 @@ export const cacheMiddleware = (duration) => {
       
       // Override res.json to intercept the payload
       res.json = (body) => {
-        // Restore the original json method
         res.json = originalJson;
-        
-        // Only cache if the request was successful
+
+        // Only cache successful responses under ~200 KB (serialised).
+        // Skipping large payloads keeps the in-process cache lean.
         if (res.statusCode === 200 && body.success !== false) {
-          cache.set(key, body, duration);
+          try {
+            const approxSize = JSON.stringify(body).length;
+            if (approxSize < 200_000) {
+              cache.set(key, body, duration);
+            }
+          } catch {}
         }
-        
+
         return originalJson.call(res, body);
       };
       
