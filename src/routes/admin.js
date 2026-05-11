@@ -96,16 +96,16 @@ const convertToCSV = (registrations) => {
 // Get registration statistics
 router.get('/registrations/stats', authenticate, requireAdminEmail, cacheMiddleware(60), async (req, res) => {
   try {
-    const totalRegistrations = await EventRegistration.countDocuments({ status: { $ne: 'cancelled' } });
-    const confirmedRegistrations = await EventRegistration.countDocuments({ status: 'confirmed' });
-    const pendingRegistrations = await EventRegistration.countDocuments({ status: 'pending' });
-    const cancelledRegistrations = await EventRegistration.countDocuments({ status: 'cancelled' });
-
-    // Group by event
-    const registrationsByEvent = await EventRegistration.aggregate([
-      { $match: { status: { $ne: 'cancelled' } } },
-      { $group: { _id: '$event_slug', count: { $sum: 1 }, eventName: { $first: '$event_name' } } },
-      { $sort: { count: -1 } }
+    const [totalRegistrations, confirmedRegistrations, pendingRegistrations, cancelledRegistrations, registrationsByEvent] = await Promise.all([
+      EventRegistration.countDocuments({ status: { $ne: 'cancelled' } }),
+      EventRegistration.countDocuments({ status: 'confirmed' }),
+      EventRegistration.countDocuments({ status: 'pending' }),
+      EventRegistration.countDocuments({ status: 'cancelled' }),
+      EventRegistration.aggregate([
+        { $match: { status: { $ne: 'cancelled' } } },
+        { $group: { _id: '$event_slug', count: { $sum: 1 }, eventName: { $first: '$event_name' } } },
+        { $sort: { count: -1 } }
+      ]),
     ]);
 
     res.json({
@@ -200,38 +200,24 @@ router.get('/registrations/export', authenticate, requireAdminEmail, async (req,
 });
 
 // Get visitor statistics
-router.get('/visitors/stats', authenticate, requireAdminEmail, async (req, res) => {
+router.get('/visitors/stats', authenticate, requireAdminEmail, cacheMiddleware(60), async (req, res) => {
   try {
-    const totalVisitors = await Visitor.countDocuments();
-    const uniqueVisitors = await Visitor.countDocuments({ is_unique: true });
-    
-    // Visitors by date (last 30 days)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    const recentVisitors = await Visitor.countDocuments({
-      visited_at: { $gte: thirtyDaysAgo }
-    });
+    const now = new Date();
+    const today = new Date(now); today.setHours(0, 0, 0, 0);
+    const weekAgo = new Date(now); weekAgo.setDate(weekAgo.getDate() - 7);
+    const thirtyDaysAgo = new Date(now); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Visitors today
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const visitorsToday = await Visitor.countDocuments({
-      visited_at: { $gte: today }
-    });
-
-    // Visitors this week
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    const visitorsThisWeek = await Visitor.countDocuments({
-      visited_at: { $gte: weekAgo }
-    });
-
-    // Most visited pages
-    const topPages = await Visitor.aggregate([
-      { $group: { _id: '$page_visited', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 10 }
+    const [totalVisitors, uniqueVisitors, visitorsToday, visitorsThisWeek, recentVisitors, topPages] = await Promise.all([
+      Visitor.countDocuments(),
+      Visitor.countDocuments({ is_unique: true }),
+      Visitor.countDocuments({ visited_at: { $gte: today } }),
+      Visitor.countDocuments({ visited_at: { $gte: weekAgo } }),
+      Visitor.countDocuments({ visited_at: { $gte: thirtyDaysAgo } }),
+      Visitor.aggregate([
+        { $group: { _id: '$page_visited', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 }
+      ]),
     ]);
 
     res.json({
@@ -242,7 +228,7 @@ router.get('/visitors/stats', authenticate, requireAdminEmail, async (req, res) 
         today: visitorsToday,
         thisWeek: visitorsThisWeek,
         last30Days: recentVisitors,
-        topPages: topPages
+        topPages,
       }
     });
   } catch (error) {
@@ -255,55 +241,22 @@ router.get('/visitors/stats', authenticate, requireAdminEmail, async (req, res) 
 });
 
 // Track visitor (public endpoint, no auth required)
-router.post('/visitors/track', async (req, res) => {
-  try {
-    const { page_visited = '/', referrer = '', session_id = '' } = req.body;
-    
-    // Get IP address
-    const ip_address = req.ip || 
-                      req.headers['x-forwarded-for']?.split(',')[0] || 
-                      req.connection.remoteAddress || 
-                      'unknown';
-    
-    // Get user agent
-    const user_agent = req.headers['user-agent'] || '';
+// Responds immediately; DB write happens in background to avoid blocking the client
+router.post('/visitors/track', (req, res) => {
+  res.json({ success: true, message: 'Visitor tracked' });
 
-    // Check if this is a unique visitor (same IP in last 24 hours)
-    const oneDayAgo = new Date();
-    oneDayAgo.setDate(oneDayAgo.getDate() - 1);
-    
-    const recentVisit = await Visitor.findOne({
-      ip_address: ip_address,
-      visited_at: { $gte: oneDayAgo }
-    });
+  const { page_visited = '/', referrer = '', session_id = '' } = req.body || {};
+  const ip_address = (req.headers['x-forwarded-for']?.split(',')[0] || req.ip || 'unknown').trim();
+  const user_agent = req.headers['user-agent'] || '';
 
-    const is_unique = !recentVisit;
+  const oneDayAgo = new Date(Date.now() - 86_400_000);
 
-    // Create visitor record
-    const visitor = new Visitor({
-      ip_address,
-      user_agent,
-      page_visited,
-      referrer,
-      session_id,
-      is_unique,
-      visited_at: new Date()
-    });
-
-    await visitor.save();
-
-    res.json({
-      success: true,
-      message: 'Visitor tracked'
-    });
-  } catch (error) {
-    console.error('Visitor tracking error:', error);
-    // Don't fail the request if tracking fails
-    res.json({
-      success: false,
-      error: error.message
-    });
-  }
+  Visitor.findOne({ ip_address, visited_at: { $gte: oneDayAgo } }, { _id: 1 })
+    .lean()
+    .then((recent) =>
+      new Visitor({ ip_address, user_agent, page_visited, referrer, session_id, is_unique: !recent, visited_at: new Date() }).save()
+    )
+    .catch((err) => console.error('Visitor tracking error:', err));
 });
 
 // ==================== DATABASE MANAGEMENT ====================
@@ -325,8 +278,8 @@ router.get('/users', authenticate, requireAdminEmail, cacheMiddleware(30), async
     
     const [users, total] = await Promise.all([
       User.find(query)
-        .select('-password -otp_code -reset_token -otp_expires_at -reset_token_expires_at')
-        .sort({ created_at: -1 })
+        .select('-password -otp_code -reset_token -otp_expires_at -reset_token_expires_at -profile_image_url')
+        .sort({ _id: -1 })
         .skip(skip)
         .limit(parseInt(limit))
         .lean(),

@@ -80,8 +80,9 @@ router.get('/', cacheMiddleware(300), async (req, res) => {
   try {
     const announcements = await Announcement.find()
       .populate('created_by', 'full_name email')
-      .sort({ created_at: -1 })
-      .limit(50); // Limit to 50 most recent
+      .sort({ _id: -1 })
+      .limit(50)
+      .lean();
 
     res.json({
       success: true,

@@ -2,7 +2,7 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import Contact from '../models/Contact.js';
 import { sendContactFormEmail } from '../utils/email.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, requireAdminEmail } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -66,28 +66,15 @@ router.post('/submit', contactValidation, async (req, res) => {
 });
 
 // Get all contact form submissions (Admin only)
-router.get('/', authenticate, async (req, res) => {
+router.get('/', authenticate, requireAdminEmail, async (req, res) => {
   try {
-    // Check if user is admin
-    const User = (await import('../models/User.js')).default;
-    const user = await User.findById(req.userId);
-    
-    if (!user || user.role !== 'admin') {
-      return res.status(403).json({ 
-        success: false, 
-        error: 'Admin access required' 
-      });
-    }
-
     const { status, search, page = 1, limit = 50 } = req.query;
     const query = {};
 
-    // Filter by status
     if (status && ['new', 'read', 'replied', 'archived'].includes(status)) {
       query.status = status;
     }
 
-    // Search by name, email, or subject
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
@@ -97,12 +84,14 @@ router.get('/', authenticate, async (req, res) => {
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    const contacts = await Contact.find(query)
-      .sort({ created_at: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
-
-    const total = await Contact.countDocuments(query);
+    const [contacts, total] = await Promise.all([
+      Contact.find(query)
+        .sort({ _id: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      Contact.countDocuments(query),
+    ]);
 
     res.json({
       success: true,
@@ -122,19 +111,8 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // Update contact status (Admin only)
-router.patch('/:id/status', authenticate, async (req, res) => {
+router.patch('/:id/status', authenticate, requireAdminEmail, async (req, res) => {
   try {
-    // Check if user is admin
-    const User = (await import('../models/User.js')).default;
-    const user = await User.findById(req.userId);
-    
-    if (!user || user.role !== 'admin') {
-      return res.status(403).json({ 
-        success: false, 
-        error: 'Admin access required' 
-      });
-    }
-
     const { status } = req.body;
     if (!['new', 'read', 'replied', 'archived'].includes(status)) {
       return res.status(400).json({ 
@@ -175,19 +153,8 @@ router.patch('/:id/status', authenticate, async (req, res) => {
 });
 
 // Delete contact (Admin only)
-router.delete('/:id', authenticate, async (req, res) => {
+router.delete('/:id', authenticate, requireAdminEmail, async (req, res) => {
   try {
-    // Check if user is admin
-    const User = (await import('../models/User.js')).default;
-    const user = await User.findById(req.userId);
-    
-    if (!user || user.role !== 'admin') {
-      return res.status(403).json({ 
-        success: false, 
-        error: 'Admin access required' 
-      });
-    }
-
     const contact = await Contact.findByIdAndDelete(req.params.id);
 
     if (!contact) {
@@ -211,19 +178,8 @@ router.delete('/:id', authenticate, async (req, res) => {
 });
 
 // Bulk delete contacts (Admin only)
-router.post('/bulk-delete', authenticate, async (req, res) => {
+router.post('/bulk-delete', authenticate, requireAdminEmail, async (req, res) => {
   try {
-    // Check if user is admin
-    const User = (await import('../models/User.js')).default;
-    const user = await User.findById(req.userId);
-    
-    if (!user || user.role !== 'admin') {
-      return res.status(403).json({ 
-        success: false, 
-        error: 'Admin access required' 
-      });
-    }
-
     const { ids } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ 

@@ -1,5 +1,6 @@
 import cluster from 'cluster';
 import os from 'os';
+import http from 'http';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -56,7 +57,7 @@ async function startServer() {
   }));
 
   // ─── Gzip compression ─────────────────────────────────────────────────────
-  app.use(compression());
+  app.use(compression({ level: 6, threshold: 1024 }));
 
   // ─── Trust proxy (Render / Vercel / Nginx) ────────────────────────────────
   app.set('trust proxy', 1);
@@ -106,17 +107,21 @@ async function startServer() {
   app.use(express.urlencoded({ extended: true, limit: '5mb' }));
   app.use(cookieParser());
 
+  // ─── No-cache header for API responses (CDN/proxy won't cache auth'd routes) ──
+  app.use('/auth', (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+
   // ─── Health & root endpoints ──────────────────────────────────────────────
   app.get('/', (_req, res) => res.status(200).send('IEEE RGIPT API is running'));
 
-  app.get('/health', (_req, res) =>
+  app.get('/health', (_req, res) => {
+    res.set('Cache-Control', 'no-store');
     res.json({
       success: true,
       message: 'Server is running',
       pid: process.pid,
       timestamp: new Date().toISOString(),
-    })
-  );
+    });
+  });
 
   // ─── API Routes ───────────────────────────────────────────────────────────
   app.use('/auth', authRoutes);
@@ -143,7 +148,13 @@ async function startServer() {
   });
 
   // ─── Start listening ──────────────────────────────────────────────────────
-  const server = app.listen(PORT, () => {
+  const server = http.createServer(app);
+
+  // Enable TCP keep-alive so long-lived connections don't stall
+  server.keepAliveTimeout = 65_000;   // must be > load-balancer idle timeout (usually 60s)
+  server.headersTimeout   = 66_000;   // slightly above keepAliveTimeout
+
+  server.listen(PORT, () => {
     console.log(`[Worker ${process.pid}] Server running on port ${PORT} — ${process.env.NODE_ENV || 'development'}`);
   });
 
