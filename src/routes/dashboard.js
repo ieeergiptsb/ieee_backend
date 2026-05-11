@@ -12,17 +12,16 @@ router.get('/', authenticate, async (req, res) => {
   try {
     const userId = req.userId;
 
-    // Get user's registrations
-    const registrations = await EventRegistration.find({
-      user_id: userId,
-      status: { $ne: 'cancelled' },
-    }).sort({ created_at: -1 }).limit(10);
-
-    // Get upcoming events count (you can customize this based on your event logic)
-    const upcomingCount = await EventRegistration.countDocuments({
-      user_id: userId,
-      status: 'confirmed',
-    });
+    const [registrations, upcomingCount] = await Promise.all([
+      EventRegistration.find({
+        user_id: userId,
+        status: { $ne: 'cancelled' },
+      }).sort({ created_at: -1 }).limit(10).lean(),
+      EventRegistration.countDocuments({
+        user_id: userId,
+        status: 'confirmed',
+      }),
+    ]);
 
     res.json({
       success: true,
@@ -172,10 +171,10 @@ router.get('/team-members', async (req, res) => {
       query.designation = designation;
     }
     
-    // Get users with their profile data including profile_image_url (uploaded during registration)
     const members = await User.find(query)
       .select('full_name designation profile_image_url linkedin_url github_url instagram_url bio achievements ieee_membership_id email')
-      .sort({ designation: 1, full_name: 1 });
+      .sort({ designation: 1, full_name: 1 })
+      .lean();
     
     // Map designations to team names and determine if head or cohead
     const getTeamInfo = (designation) => {
@@ -286,7 +285,9 @@ router.get('/team-members/:slug', async (req, res) => {
     
     const members = await User.find(query)
       .select('full_name designation profile_image_url linkedin_url github_url instagram_url bio achievements ieee_membership_id email')
-      .sort({ designation: 1, full_name: 1 });
+      .sort({ designation: 1, full_name: 1 })
+      .lean();
+
     
     // Helper to generate slug from name
     const generateSlug = (name) => {

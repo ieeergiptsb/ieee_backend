@@ -3,6 +3,7 @@ import { authenticate, requireAdminEmail } from '../middleware/auth.js';
 import EventRegistration from '../models/EventRegistration.js';
 import User from '../models/User.js';
 import Visitor from '../models/Visitor.js';
+import { cacheMiddleware } from '../middleware/cache.js';
 
 const router = express.Router();
 
@@ -93,7 +94,7 @@ const convertToCSV = (registrations) => {
 };
 
 // Get registration statistics
-router.get('/registrations/stats', authenticate, requireAdminEmail, async (req, res) => {
+router.get('/registrations/stats', authenticate, requireAdminEmail, cacheMiddleware(60), async (req, res) => {
   try {
     const totalRegistrations = await EventRegistration.countDocuments({ status: { $ne: 'cancelled' } });
     const confirmedRegistrations = await EventRegistration.countDocuments({ status: 'confirmed' });
@@ -138,13 +139,15 @@ router.get('/registrations', authenticate, requireAdminEmail, async (req, res) =
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const registrations = await EventRegistration.find(query)
-      .populate('user_id', 'email full_name phone_number college roll_no branch year')
-      .sort({ created_at: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
-
-    const total = await EventRegistration.countDocuments(query);
+    const [registrations, total] = await Promise.all([
+      EventRegistration.find(query)
+        .populate('user_id', 'email full_name phone_number college roll_no branch year')
+        .sort({ created_at: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      EventRegistration.countDocuments(query),
+    ]);
 
     res.json({
       success: true,
@@ -177,7 +180,8 @@ router.get('/registrations/export', authenticate, requireAdminEmail, async (req,
 
     const registrations = await EventRegistration.find(query)
       .populate('user_id', 'email full_name phone_number college roll_no branch year')
-      .sort({ created_at: -1 });
+      .sort({ created_at: -1 })
+      .lean();
 
     const csvContent = convertToCSV(registrations);
 
@@ -305,7 +309,7 @@ router.post('/visitors/track', async (req, res) => {
 // ==================== DATABASE MANAGEMENT ====================
 
 // Get all users (for admin management)
-router.get('/users', authenticate, requireAdminEmail, async (req, res) => {
+router.get('/users', authenticate, requireAdminEmail, cacheMiddleware(30), async (req, res) => {
   try {
     const { page = 1, limit = 100, search = '' } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -319,13 +323,15 @@ router.get('/users', authenticate, requireAdminEmail, async (req, res) => {
       ];
     }
     
-    const users = await User.find(query)
-      .select('-password -otp_code -reset_token')
-      .sort({ created_at: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
-    
-    const total = await User.countDocuments(query);
+    const [users, total] = await Promise.all([
+      User.find(query)
+        .select('-password -otp_code -reset_token -otp_expires_at -reset_token_expires_at')
+        .sort({ created_at: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      User.countDocuments(query),
+    ]);
     
     res.json({
       success: true,
