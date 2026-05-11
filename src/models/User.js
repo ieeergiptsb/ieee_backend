@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
 const userSchema = new mongoose.Schema({
   username: {
@@ -181,7 +182,6 @@ userSchema.methods.verifyOTP = function(otp) {
 
 // Method to generate password reset token
 userSchema.methods.generateResetToken = function() {
-  const crypto = require('crypto');
   const resetToken = crypto.randomBytes(32).toString('hex');
   this.reset_token = resetToken;
   this.reset_token_expires_at = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
