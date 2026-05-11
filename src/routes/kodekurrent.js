@@ -6,7 +6,7 @@ import KodekurrentTeam from '../models/KodekurrentTeam.js';
 import Announcement from '../models/Announcement.js';
 import { authenticate } from '../middleware/auth.js';
 import { sendTeamInviteEmail, sendTeamCompletionEmail } from '../utils/email.js';
-import { cacheMiddleware } from '../middleware/cache.js';
+import { cacheMiddleware, clearCache } from '../middleware/cache.js';
 
 const router = express.Router();
 
@@ -149,6 +149,7 @@ router.post('/register-team', authenticate, async (req, res) => {
     });
 
     await team.save();
+    clearCache('__api_cache__/admin/registrations');
 
     // Generate JWTs and send invite emails asynchronously
     const jwtSecret = process.env.JWT_SECRET || 'ieee_rgipt_super_secret_jwt_key_2025_change_in_production';
@@ -239,6 +240,7 @@ router.get('/verify-team', authenticate, async (req, res) => {
     const allVerified = team.members.every(m => m.status === 'Verified');
 
     await team.save();
+    clearCache('__api_cache__/admin/registrations');
 
     // If all verified, send completion email to team lead
     if (allVerified) {

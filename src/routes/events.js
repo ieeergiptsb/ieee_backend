@@ -3,7 +3,7 @@ import { body, validationResult } from 'express-validator';
 import EventRegistration from '../models/EventRegistration.js';
 import { authenticate } from '../middleware/auth.js';
 import { sendRegistrationConfirmationEmail } from '../utils/email.js';
-import { cacheMiddleware } from '../middleware/cache.js';
+import { cacheMiddleware, clearCache } from '../middleware/cache.js';
 
 const router = express.Router();
 
@@ -71,6 +71,7 @@ router.post('/register', authenticate, registrationValidation, async (req, res) 
     });
 
     await registration.save();
+    clearCache('__api_cache__/admin/registrations');
 
     // Populate user data for email
     const registrationWithUser = await EventRegistration.findById(registration._id)
@@ -179,6 +180,7 @@ router.patch('/registration/:id/cancel', authenticate, async (req, res) => {
 
     registration.status = 'cancelled';
     await registration.save();
+    clearCache('__api_cache__/admin/registrations');
 
     res.json({
       success: true,
@@ -227,7 +229,6 @@ router.get('/event/:eventSlug/registrations', authenticate, cacheMiddleware(30),
 });
 
 export default router;
-
 
 
 

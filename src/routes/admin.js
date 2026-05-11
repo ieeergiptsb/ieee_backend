@@ -2,6 +2,7 @@ import express from 'express';
 import { authenticate, requireAdminEmail } from '../middleware/auth.js';
 import EventRegistration from '../models/EventRegistration.js';
 import BootcampRegistration from '../models/BootcampRegistration.js';
+import KodekurrentTeam from '../models/KodekurrentTeam.js';
 import User from '../models/User.js';
 import Visitor from '../models/Visitor.js';
 import { cacheMiddleware } from '../middleware/cache.js';
@@ -31,6 +32,33 @@ const normalizeBootcampRegistration = (reg) => {
     created_at: reg.createdAt || reg.registered_at,
     updated_at: reg.updatedAt,
     user_id: user,
+  };
+};
+
+const normalizeKodekurrentTeam = (team) => {
+  const lead = team.team_lead || {};
+  const members = (team.members || []).map((member) => ({
+    name: member.full_name || (member.user && member.user.full_name) || '',
+    email: member.email || (member.user && member.user.email) || '',
+    mobile: (member.user && member.user.phone_number) || '',
+    status: member.status,
+  }));
+  const allVerified = members.length > 0 && members.every((member) => member.status === 'Verified');
+
+  return {
+    _id: team._id,
+    source: 'kodekurrent',
+    event_name: 'KodeKurrent',
+    event_slug: 'kodekurrent',
+    team_name: team.team_name || 'Team',
+    team_size: members.length || 1,
+    members,
+    feedback: team.project_title || '',
+    status: allVerified ? 'confirmed' : 'pending',
+    registration_date: team.created_at || team.createdAt,
+    created_at: team.created_at || team.createdAt,
+    updated_at: team.updated_at || team.updatedAt,
+    user_id: lead,
   };
 };
 
@@ -123,7 +151,7 @@ const convertToCSV = (registrations) => {
 // Get registration statistics
 router.get('/registrations/stats', authenticate, requireAdminEmail, async (req, res) => {
   try {
-    const [totalRegistrations, confirmedRegistrations, pendingRegistrations, cancelledRegistrations, registrationsByEvent, bootcampTotal, bootcampByEvent] = await Promise.all([
+    const [totalRegistrations, confirmedRegistrations, pendingRegistrations, cancelledRegistrations, registrationsByEvent, bootcampTotal, bootcampByEvent, kodekurrentTeams] = await Promise.all([
       EventRegistration.countDocuments({ status: { $ne: 'cancelled' } }),
       EventRegistration.countDocuments({ status: 'confirmed' }),
       EventRegistration.countDocuments({ status: 'pending' }),
@@ -147,16 +175,24 @@ router.get('/registrations/stats', authenticate, requireAdminEmail, async (req, 
         { $group: { _id: '$eventDoc.slug', count: { $sum: 1 }, eventName: { $first: '$eventDoc.title' } } },
         { $sort: { count: -1 } },
       ]),
+      KodekurrentTeam.find().select('members').lean(),
     ]);
 
-    const combinedByEvent = [...registrationsByEvent, ...bootcampByEvent].sort((a, b) => b.count - a.count);
+    const kodekurrentConfirmed = kodekurrentTeams.filter((team) =>
+      (team.members || []).length > 0 && team.members.every((member) => member.status === 'Verified')
+    ).length;
+    const kodekurrentPending = kodekurrentTeams.length - kodekurrentConfirmed;
+    const kodekurrentByEvent = kodekurrentTeams.length
+      ? [{ _id: 'kodekurrent', count: kodekurrentTeams.length, eventName: 'KodeKurrent' }]
+      : [];
+    const combinedByEvent = [...registrationsByEvent, ...bootcampByEvent, ...kodekurrentByEvent].sort((a, b) => b.count - a.count);
 
     res.json({
       success: true,
       stats: {
-        total: totalRegistrations + bootcampTotal,
-        confirmed: confirmedRegistrations + bootcampTotal,
-        pending: pendingRegistrations,
+        total: totalRegistrations + bootcampTotal + kodekurrentTeams.length,
+        confirmed: confirmedRegistrations + bootcampTotal + kodekurrentConfirmed,
+        pending: pendingRegistrations + kodekurrentPending,
         cancelled: cancelledRegistrations,
         byEvent: combinedByEvent
       }
@@ -182,7 +218,7 @@ router.get('/registrations', authenticate, requireAdminEmail, async (req, res) =
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const [registrations, bootcampRegistrations] = await Promise.all([
+    const [registrations, bootcampRegistrations, kodekurrentTeams] = await Promise.all([
       EventRegistration.find(query)
         .populate('user_id', 'email full_name phone_number college roll_no branch year')
         .sort({ created_at: -1 })
@@ -194,13 +230,24 @@ router.get('/registrations', authenticate, requireAdminEmail, async (req, res) =
             .populate('event', 'title slug')
             .sort({ registered_at: -1, createdAt: -1 })
             .lean(),
+      status && status === 'cancelled'
+        ? Promise.resolve([])
+        : KodekurrentTeam.find()
+            .populate('team_lead', 'email full_name phone_number college roll_no branch year')
+            .populate('members.user', 'email full_name phone_number college roll_no branch year')
+            .sort({ created_at: -1 })
+            .lean(),
     ]);
 
     const normalizedBootcampRegistrations = bootcampRegistrations
       .map(normalizeBootcampRegistration)
       .filter((reg) => !event_slug || reg.event_slug === event_slug);
+    const normalizedKodekurrentTeams = kodekurrentTeams
+      .map(normalizeKodekurrentTeam)
+      .filter((reg) => !event_slug || reg.event_slug === event_slug)
+      .filter((reg) => !status || reg.status === status);
 
-    const combined = [...registrations, ...normalizedBootcampRegistrations]
+    const combined = [...registrations, ...normalizedBootcampRegistrations, ...normalizedKodekurrentTeams]
       .sort((a, b) => new Date(b.created_at || b.registration_date || 0) - new Date(a.created_at || a.registration_date || 0));
 
     const total = combined.length;
@@ -235,7 +282,7 @@ router.get('/registrations/export', authenticate, requireAdminEmail, async (req,
     if (status) query.status = status;
     else query.status = { $ne: 'cancelled' };
 
-    const [eventRegistrations, bootcampRegistrations] = await Promise.all([
+    const [eventRegistrations, bootcampRegistrations, kodekurrentTeams] = await Promise.all([
       EventRegistration.find(query)
         .populate('user_id', 'email full_name phone_number college roll_no branch year')
         .sort({ created_at: -1 })
@@ -247,6 +294,13 @@ router.get('/registrations/export', authenticate, requireAdminEmail, async (req,
             .populate('event', 'title slug')
             .sort({ registered_at: -1, createdAt: -1 })
             .lean(),
+      status && status === 'cancelled'
+        ? Promise.resolve([])
+        : KodekurrentTeam.find()
+            .populate('team_lead', 'email full_name phone_number college roll_no branch year')
+            .populate('members.user', 'email full_name phone_number college roll_no branch year')
+            .sort({ created_at: -1 })
+            .lean(),
     ]);
 
     const registrations = [
@@ -254,6 +308,10 @@ router.get('/registrations/export', authenticate, requireAdminEmail, async (req,
       ...bootcampRegistrations
         .map(normalizeBootcampRegistration)
         .filter((reg) => !event_slug || reg.event_slug === event_slug),
+      ...kodekurrentTeams
+        .map(normalizeKodekurrentTeam)
+        .filter((reg) => !event_slug || reg.event_slug === event_slug)
+        .filter((reg) => !status || reg.status === status),
     ].sort((a, b) => new Date(b.created_at || b.registration_date || 0) - new Date(a.created_at || a.registration_date || 0));
 
     const csvContent = convertToCSV(registrations);
