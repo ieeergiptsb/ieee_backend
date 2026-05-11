@@ -1,11 +1,38 @@
 import express from 'express';
 import { authenticate, requireAdminEmail } from '../middleware/auth.js';
 import EventRegistration from '../models/EventRegistration.js';
+import BootcampRegistration from '../models/BootcampRegistration.js';
 import User from '../models/User.js';
 import Visitor from '../models/Visitor.js';
 import { cacheMiddleware } from '../middleware/cache.js';
 
 const router = express.Router();
+
+const normalizeBootcampRegistration = (reg) => {
+  const event = reg.event || {};
+  const user = reg.user_id || {};
+  return {
+    _id: reg._id,
+    source: 'bootcamp',
+    event_name: event.title || 'Bootcamp Program',
+    event_slug: event.slug || '',
+    team_name: 'Individual',
+    team_size: 1,
+    members: [
+      {
+        name: user.full_name || '',
+        email: user.email || '',
+        mobile: user.phone_number || '',
+      },
+    ],
+    feedback: '',
+    status: 'confirmed',
+    registration_date: reg.registered_at || reg.createdAt,
+    created_at: reg.createdAt || reg.registered_at,
+    updated_at: reg.updatedAt,
+    user_id: user,
+  };
+};
 
 // Helper function to convert registrations to CSV
 const convertToCSV = (registrations) => {
@@ -94,9 +121,9 @@ const convertToCSV = (registrations) => {
 };
 
 // Get registration statistics
-router.get('/registrations/stats', authenticate, requireAdminEmail, cacheMiddleware(60), async (req, res) => {
+router.get('/registrations/stats', authenticate, requireAdminEmail, async (req, res) => {
   try {
-    const [totalRegistrations, confirmedRegistrations, pendingRegistrations, cancelledRegistrations, registrationsByEvent] = await Promise.all([
+    const [totalRegistrations, confirmedRegistrations, pendingRegistrations, cancelledRegistrations, registrationsByEvent, bootcampTotal, bootcampByEvent] = await Promise.all([
       EventRegistration.countDocuments({ status: { $ne: 'cancelled' } }),
       EventRegistration.countDocuments({ status: 'confirmed' }),
       EventRegistration.countDocuments({ status: 'pending' }),
@@ -106,16 +133,32 @@ router.get('/registrations/stats', authenticate, requireAdminEmail, cacheMiddlew
         { $group: { _id: '$event_slug', count: { $sum: 1 }, eventName: { $first: '$event_name' } } },
         { $sort: { count: -1 } }
       ]),
+      BootcampRegistration.countDocuments(),
+      BootcampRegistration.aggregate([
+        {
+          $lookup: {
+            from: 'bootcampevents',
+            localField: 'event',
+            foreignField: '_id',
+            as: 'eventDoc',
+          },
+        },
+        { $unwind: '$eventDoc' },
+        { $group: { _id: '$eventDoc.slug', count: { $sum: 1 }, eventName: { $first: '$eventDoc.title' } } },
+        { $sort: { count: -1 } },
+      ]),
     ]);
+
+    const combinedByEvent = [...registrationsByEvent, ...bootcampByEvent].sort((a, b) => b.count - a.count);
 
     res.json({
       success: true,
       stats: {
-        total: totalRegistrations,
-        confirmed: confirmedRegistrations,
+        total: totalRegistrations + bootcampTotal,
+        confirmed: confirmedRegistrations + bootcampTotal,
         pending: pendingRegistrations,
         cancelled: cancelledRegistrations,
-        byEvent: registrationsByEvent
+        byEvent: combinedByEvent
       }
     });
   } catch (error) {
@@ -139,19 +182,33 @@ router.get('/registrations', authenticate, requireAdminEmail, async (req, res) =
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const [registrations, total] = await Promise.all([
+    const [registrations, bootcampRegistrations] = await Promise.all([
       EventRegistration.find(query)
         .populate('user_id', 'email full_name phone_number college roll_no branch year')
         .sort({ created_at: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
         .lean(),
-      EventRegistration.countDocuments(query),
+      status && status !== 'confirmed'
+        ? Promise.resolve([])
+        : BootcampRegistration.find()
+            .populate('user_id', 'email full_name phone_number college roll_no branch year')
+            .populate('event', 'title slug')
+            .sort({ registered_at: -1, createdAt: -1 })
+            .lean(),
     ]);
+
+    const normalizedBootcampRegistrations = bootcampRegistrations
+      .map(normalizeBootcampRegistration)
+      .filter((reg) => !event_slug || reg.event_slug === event_slug);
+
+    const combined = [...registrations, ...normalizedBootcampRegistrations]
+      .sort((a, b) => new Date(b.created_at || b.registration_date || 0) - new Date(a.created_at || a.registration_date || 0));
+
+    const total = combined.length;
+    const paginated = combined.slice(skip, skip + parseInt(limit));
 
     res.json({
       success: true,
-      registrations: registrations,
+      registrations: paginated,
       pagination: {
         total,
         page: parseInt(page),
@@ -178,10 +235,26 @@ router.get('/registrations/export', authenticate, requireAdminEmail, async (req,
     if (status) query.status = status;
     else query.status = { $ne: 'cancelled' };
 
-    const registrations = await EventRegistration.find(query)
-      .populate('user_id', 'email full_name phone_number college roll_no branch year')
-      .sort({ created_at: -1 })
-      .lean();
+    const [eventRegistrations, bootcampRegistrations] = await Promise.all([
+      EventRegistration.find(query)
+        .populate('user_id', 'email full_name phone_number college roll_no branch year')
+        .sort({ created_at: -1 })
+        .lean(),
+      status && status !== 'confirmed'
+        ? Promise.resolve([])
+        : BootcampRegistration.find()
+            .populate('user_id', 'email full_name phone_number college roll_no branch year')
+            .populate('event', 'title slug')
+            .sort({ registered_at: -1, createdAt: -1 })
+            .lean(),
+    ]);
+
+    const registrations = [
+      ...eventRegistrations,
+      ...bootcampRegistrations
+        .map(normalizeBootcampRegistration)
+        .filter((reg) => !event_slug || reg.event_slug === event_slug),
+    ].sort((a, b) => new Date(b.created_at || b.registration_date || 0) - new Date(a.created_at || a.registration_date || 0));
 
     const csvContent = convertToCSV(registrations);
 
@@ -565,5 +638,3 @@ router.post('/registrations/bulk-delete', authenticate, requireAdminEmail, async
 });
 
 export default router;
-
-

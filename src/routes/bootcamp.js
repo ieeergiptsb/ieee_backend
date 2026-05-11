@@ -4,7 +4,7 @@ import BootcampRegistration from '../models/BootcampRegistration.js';
 import BootcampUpdate from '../models/BootcampUpdate.js';
 import User from '../models/User.js';
 import { authenticate } from '../middleware/auth.js';
-import { cacheMiddleware } from '../middleware/cache.js';
+import { cacheMiddleware, clearCache } from '../middleware/cache.js';
 import { sendBootcampRegistrationConfirmationEmail } from '../utils/email.js';
 
 const router = express.Router();
@@ -89,6 +89,7 @@ router.post('/events/:slug/register', authenticate, async (req, res) => {
       user_id: req.userId,
       event: event._id,
     });
+    clearCache('__api_cache__/admin/registrations');
 
     const frontend = process.env.FRONTEND_URL || 'https://ieeergipt.in';
     const dashboardUrl = `${frontend.replace(/\/$/, '')}/dashboard`;
