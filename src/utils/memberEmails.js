@@ -6,8 +6,8 @@ import { getEmailToDesignationMap } from '../data/team-structure.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Path to email.json at repo root  (backend is at <root>/backend)
-const EMAIL_JSON_PATH = resolve(__dirname, '..', '..', '..', 'email.json');
+// email.json lives inside ieee_frontend/ (backend is at <root>/backend)
+const EMAIL_JSON_PATH = resolve(__dirname, '..', '..', '..', 'ieee_frontend', 'email.json');
 
 let _cache = null;
 

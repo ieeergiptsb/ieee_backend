@@ -47,7 +47,7 @@ Week 11–12: FastAPI/Django basics, DBMS, Python fundamentals`,
     ],
     duration: 'Multi-week Bootcamp',
     category: 'bootcamp',
-    banner_url: '/images/posters/6.png',
+    banner_url: '/images/posters/devwave.png',
     is_active: true,
   },
   {
@@ -84,20 +84,19 @@ Phase 4: Dynamic Programming & contests`,
     ],
     duration: '10 Week Program',
     category: 'bootcamp',
-    banner_url: '/images/posters/4.png',
+    banner_url: '/images/posters/codenex.png',
     is_active: true,
   },
 ];
 
 await connectDB();
 for (const e of events) {
-  const exists = await BootcampEvent.findOne({ slug: e.slug });
-  if (exists) {
-    console.log('Skip (exists):', e.slug);
-    continue;
-  }
-  await BootcampEvent.create(e);
-  console.log('Inserted:', e.slug);
+  const result = await BootcampEvent.findOneAndUpdate(
+    { slug: e.slug },
+    { $set: e },
+    { upsert: true, new: true }
+  );
+  console.log('Upserted:', result.slug);
 }
 console.log('Done.');
 process.exit(0);
