@@ -6,8 +6,8 @@ import { getEmailToDesignationMap } from '../data/team-structure.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// email.json lives inside ieee_frontend/ (backend is at <root>/backend)
-const EMAIL_JSON_PATH = resolve(__dirname, '..', '..', '..', 'ieee_frontend', 'email.json');
+// Bundled copy of the member email whitelist — backend/src/data/memberEmails.json
+const EMAIL_JSON_PATH = resolve(__dirname, '..', 'data', 'memberEmails.json');
 
 let _cache = null;
 
