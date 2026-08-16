@@ -14,6 +14,40 @@ const { default: BootcampEvent } = await import('../src/models/BootcampEvent.js'
 
 const events = [
   {
+    title: 'Introduction to Robotics',
+    slug: 'robotics-workshop-2026',
+    tagline: 'Hands-On Robotics Workshop for First-Year RGIPT Students',
+    short_description:
+      'An interactive, hands-on introduction to Robotics & Automation for newly admitted First-Year Students, RGIPT.',
+    description:
+      'An interactive, hands-on introduction to Robotics & Automation, giving first-year students practical exposure to how sensors, electronics, programming, microcontrollers and control logic come together to build a functional Line Following Robot (LFR) system.\n\nOrganized by IEEE RGIPT Student Branch in collaboration with Science & Technology (S&T) Council, RGIPT.',
+    roadmap: `Module 1: Robotics Fundamentals & Basic Components
+Module 2: Sensors & Microcontrollers Architecture
+Module 3: Electronics, Programming & Control Logic
+Module 4: Hands-on LFR Assembly & Testing`,
+    highlights: [
+      'Robotics Fundamentals',
+      'Basic Robotic Components',
+      'Line Following Robots (LFR)',
+      'Sensors & Microcontrollers',
+      'Control Logic & Electronics',
+      'Hands-on LFR Testing',
+    ],
+    topics: [
+      'Robotics',
+      'Automation',
+      'Sensors',
+      'Microcontrollers',
+      'LFR',
+      'Electronics',
+      'Control Logic',
+    ],
+    duration: '22 August 2026',
+    category: 'workshop',
+    banner_url: '/images/posters/robotics-workshop.png',
+    is_active: true,
+  },
+  {
     title: 'DEVWAVE 2026',
     slug: 'devwave-2026',
     tagline: 'Ride the Wave of Development & Design',
@@ -48,7 +82,7 @@ Week 11–12: FastAPI/Django basics, DBMS, Python fundamentals`,
     duration: 'Multi-week Bootcamp',
     category: 'bootcamp',
     banner_url: '/images/posters/devwave.png',
-    is_active: true,
+    is_active: false,
   },
   {
     title: 'CodeNex 3.0',
@@ -85,7 +119,7 @@ Phase 4: Dynamic Programming & contests`,
     duration: '10 Week Program',
     category: 'bootcamp',
     banner_url: '/images/posters/codenex.png',
-    is_active: true,
+    is_active: false,
   },
 ];
 
