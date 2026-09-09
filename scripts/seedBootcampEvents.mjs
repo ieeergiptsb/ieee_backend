@@ -14,6 +14,41 @@ const { default: BootcampEvent } = await import('../src/models/BootcampEvent.js'
 
 const events = [
   {
+    title: 'RoboGenesis',
+    slug: 'robogenesis',
+    tagline: 'Build. Learn. Compete. Innovate — One-Day Robotics Workshop',
+    short_description:
+      'RoboGenesis is a robotics workshop organised by the IEEE RGIPT Robotics & Automation Society in association with TechFest, IIT Bombay.',
+    description:
+      'RoboGenesis is a premier robotics workshop organised by the IEEE RGIPT Robotics & Automation Society in association with TechFest, IIT Bombay.\n\nThe workshop will cover bot design, Arduino basics, and strategies for TechFest robotics competitions, helping participants develop practical robotics skills and explore opportunities to participate in TechFest competitions through wildcard entries.\n\nOrganized by IEEE RGIPT Student Branch in collaboration with TechFest, IIT Bombay.',
+    roadmap: `Session 1: Bot Design & Hardware Architecture
+Session 2: Arduino Basics, Microcontroller Interfacing & Sensors
+Session 3: Motor Drivers, Power Distribution & Actuators
+Session 4: Competition Strategies: Roboreach, Meshmerize & Thetashift
+Session 5: TechFest Wildcard Entry Roadmap & Q&A Mentorship`,
+    highlights: [
+      'Bot Design & Hardware Architecture',
+      'Arduino Basics & Microcontroller Interfacing',
+      'Strategies for Roboreach, Meshmerize & Thetashift',
+      'Chance to get Wildcard Entry in TechFest, IIT Bombay',
+      'Hands-on Experience with Working Robotic Prototypes',
+      'Mentorship from Senior IEEE Robotics Developers',
+    ],
+    topics: [
+      'Bot Design',
+      'Arduino Basics',
+      'Roboreach',
+      'Meshmerize',
+      'Thetashift',
+      'Sensors',
+      'TechFest IIT Bombay',
+    ],
+    duration: 'One-Day Intensive Workshop',
+    category: 'workshop',
+    banner_url: '/robogenises/ROBOGENESIS.png',
+    is_active: true,
+  },
+  {
     title: 'DEVWAVE 2026',
     slug: 'devwave-2026',
     tagline: 'Ride the Wave of Development & Design',
@@ -48,7 +83,7 @@ Week 11–12: FastAPI/Django basics, DBMS, Python fundamentals`,
     duration: 'Multi-week Bootcamp',
     category: 'bootcamp',
     banner_url: '/images/posters/devwave.png',
-    is_active: true,
+    is_active: false,
   },
   {
     title: 'CodeNex 3.0',
@@ -85,7 +120,7 @@ Phase 4: Dynamic Programming & contests`,
     duration: '10 Week Program',
     category: 'bootcamp',
     banner_url: '/images/posters/codenex.png',
-    is_active: true,
+    is_active: false,
   },
 ];
 
