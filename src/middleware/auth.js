@@ -50,6 +50,8 @@ const ADMIN_EMAILS_RAW = [
   'bindalshashank.670@gmail.com',
   'ieee_sb@rgipt.ac.in',
   '24IT3056@rgipt.ac.in',
+  'jainarjav80@gmail.com',
+  ...(process.env.ADMIN_EMAILS ? process.env.ADMIN_EMAILS.split(',').map(s => s.trim()) : []),
 ];
 
 // Normalize once at module load time (not on every request)
@@ -74,12 +76,13 @@ export const requireAdminEmail = (req, res, next) => {
 
   const userEmail = normalizeEmail(req.user.email);
 
-  if (!ADMIN_EMAILS_NORMALIZED.has(userEmail)) {
-    return res.status(403).json({
-      success: false,
-      error: 'Access denied. Admin access is restricted to authorized personnel only.',
-    });
+  // Grant access if user has admin role OR email is in whitelist
+  if (req.user.role === 'admin' || ADMIN_EMAILS_NORMALIZED.has(userEmail)) {
+    return next();
   }
 
-  next(); // req.user and req.userId already set by authenticate
+  return res.status(403).json({
+    success: false,
+    error: 'Access denied. Admin access is restricted to authorized personnel only.',
+  });
 };
