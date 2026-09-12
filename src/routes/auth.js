@@ -55,14 +55,6 @@ router.post('/register/initiate', uploadProfilePicture, registerValidation, asyn
       });
     }
 
-    // Profile picture is mandatory
-    if (!req.file) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Profile picture is required' 
-      });
-    }
-
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ 
@@ -86,11 +78,14 @@ router.post('/register/initiate', uploadProfilePicture, registerValidation, asyn
       designation 
     } = req.body;
 
-    // Handle profile picture upload (mandatory)
-    // Convert buffer to base64 data URL
-    const base64Image = req.file.buffer.toString('base64');
-    const mimeType = req.file.mimetype;
-    const profileImageUrl = `data:${mimeType};base64,${base64Image}`;
+    // Handle profile picture upload (optional)
+    // Convert buffer to base64 data URL if uploaded
+    let profileImageUrl = null;
+    if (req.file) {
+      const base64Image = req.file.buffer.toString('base64');
+      const mimeType = req.file.mimetype;
+      profileImageUrl = `data:${mimeType};base64,${base64Image}`;
+    }
 
     // Normalize email: for Gmail, remove dots (Gmail treats dots as same)
     let normalizedEmail = email.toLowerCase().trim();

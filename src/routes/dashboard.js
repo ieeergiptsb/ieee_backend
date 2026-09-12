@@ -115,6 +115,14 @@ router.get('/id-card', authenticate, async (req, res) => {
       });
     }
 
+    // ID cards require a profile photo
+    if (!user.profile_image_url) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Profile photo is required to generate an ID card. Please upload a profile picture in your profile settings.' 
+      });
+    }
+
     // Generate ID card with member information
     // For IEEE members, use designation if available (will be formatted nicely in idCardGenerator)
     // For non-members, use "Member"
@@ -135,6 +143,13 @@ router.get('/id-card', authenticate, async (req, res) => {
       ieeeMembershipId: user.ieee_membership_id || null,
       userDesignation: user.designation || null, // Pass designation explicitly for better formatting
     });
+
+    if (!idCardBuffer) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Failed to generate ID card. Please ensure your profile photo is valid.' 
+      });
+    }
 
     // Set response headers for image
     res.setHeader('Content-Type', 'image/png');
