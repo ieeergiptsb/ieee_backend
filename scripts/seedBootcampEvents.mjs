@@ -21,11 +21,7 @@ const events = [
       'RoboGenesis is a robotics workshop organised by the IEEE RGIPT Robotics & Automation Society in association with TechFest, IIT Bombay.',
     description:
       'RoboGenesis is a premier robotics workshop organised by the IEEE RGIPT Robotics & Automation Society in association with TechFest, IIT Bombay.\n\nThe workshop will cover bot design, Arduino basics, and strategies for TechFest robotics competitions, helping participants develop practical robotics skills and explore opportunities to participate in TechFest competitions through wildcard entries.\n\nOrganized by IEEE RGIPT Student Branch in collaboration with TechFest, IIT Bombay.',
-    roadmap: `Session 1: Bot Design & Hardware Architecture
-Session 2: Arduino Basics, Microcontroller Interfacing & Sensors
-Session 3: Motor Drivers, Power Distribution & Actuators
-Session 4: Competition Strategies: Roboreach, Meshmerize & Thetashift
-Session 5: TechFest Wildcard Entry Roadmap & Q&A Mentorship`,
+    roadmap: '',
     highlights: [
       'Bot Design & Hardware Architecture',
       'Arduino Basics & Microcontroller Interfacing',
