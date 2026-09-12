@@ -31,7 +31,6 @@ Session 5: TechFest Wildcard Entry Roadmap & Q&A Mentorship`,
       'Arduino Basics & Microcontroller Interfacing',
       'Strategies for Roboreach, Meshmerize & Thetashift',
       'Chance to get Wildcard Entry in TechFest, IIT Bombay',
-      'Hands-on Experience with Working Robotic Prototypes',
       'Mentorship from Senior IEEE Robotics Developers',
     ],
     topics: [
@@ -125,6 +124,8 @@ Phase 4: Dynamic Programming & contests`,
 ];
 
 await connectDB();
+const { default: BootcampUpdate } = await import('../src/models/BootcampUpdate.js');
+
 for (const e of events) {
   const result = await BootcampEvent.findOneAndUpdate(
     { slug: e.slug },
@@ -133,5 +134,24 @@ for (const e of events) {
   );
   console.log('Upserted:', result.slug);
 }
+
+const roboEvent = await BootcampEvent.findOne({ slug: 'robogenesis' });
+if (roboEvent) {
+  const whatsappUpdate = {
+    event: roboEvent._id,
+    title: 'Official WhatsApp Community Group',
+    short_description:
+      'Join the official participants WhatsApp group for session schedules, bot design resources, competition updates, and TechFest wildcard entry announcements.',
+    link: 'https://chat.whatsapp.com/C5Ypne3xe7A76CVyh9Ksxt',
+  };
+
+  const updateResult = await BootcampUpdate.findOneAndUpdate(
+    { event: roboEvent._id, link: whatsappUpdate.link },
+    { $set: whatsappUpdate },
+    { upsert: true, new: true }
+  );
+  console.log('Upserted WhatsApp update for RoboGenesis:', updateResult._id);
+}
+
 console.log('Done.');
 process.exit(0);
