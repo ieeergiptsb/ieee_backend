@@ -55,6 +55,11 @@ const fetchImageFromUrl = (url) => {
 };
 
 export async function generateIDCard({ userName, userPhoto, teamName, eventName, userCollege, userRollNo, membershipType, ieeeMembershipId, userDesignation }) {
+  // If user has not uploaded a photo, do not generate an ID card
+  if (!userPhoto) {
+    return null;
+  }
+
   // Lazy-load canvas only when actually generating an ID card
   const { createCanvas, loadImage, registerFont } = await getCanvas();
 

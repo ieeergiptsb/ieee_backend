@@ -132,21 +132,23 @@ export const sendRegistrationConfirmationEmail = async (email, eventName, teamNa
     `;
 
     let attachments = [];
-    try {
-      const idCardBuffer = await generateIDCard({
-        userName: userName || 'Participant',
-        userPhoto, teamName, eventName, userCollege, userRollNo,
-        membershipType: membershipType || 'non_member',
-        ieeeMembershipId: ieeeMembershipId || null,
-      });
-      if (idCardBuffer) {
-        attachments.push({
-          filename: `ID_Card_${eventName.replace(/[^a-z0-9]/gi, '_')}.png`,
-          content: idCardBuffer
+    if (userPhoto) {
+      try {
+        const idCardBuffer = await generateIDCard({
+          userName: userName || 'Participant',
+          userPhoto, teamName, eventName, userCollege, userRollNo,
+          membershipType: membershipType || 'non_member',
+          ieeeMembershipId: ieeeMembershipId || null,
         });
+        if (idCardBuffer) {
+          attachments.push({
+            filename: `ID_Card_${eventName.replace(/[^a-z0-9]/gi, '_')}.png`,
+            content: idCardBuffer
+          });
+        }
+      } catch (e) {
+        console.error('⚠️ Failed to generate ID card:', e.message);
       }
-    } catch (e) {
-      console.error('⚠️ Failed to generate ID card:', e.message);
     }
 
     console.log(`📧 Sending confirmation via Resend to: ${email}`);
