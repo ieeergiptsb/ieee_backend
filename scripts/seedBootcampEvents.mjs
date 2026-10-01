@@ -14,6 +14,36 @@ const { default: BootcampEvent } = await import('../src/models/BootcampEvent.js'
 
 const events = [
   {
+    title: 'RoboQuest',
+    slug: 'roboquest',
+    tagline: 'Build. Learn. Compete. Innovate — One-Day Robotics Workshop',
+    short_description:
+      'RoboQuest is a robotics workshop organised by the IEEE RGIPT Robotics & Automation Society in association with TechFest, IIT Bombay.',
+    description:
+      'RoboQuest is a premier robotics workshop organised by the IEEE RGIPT Robotics & Automation Society in association with TechFest, IIT Bombay.\n\nThe workshop will cover bot design, Arduino basics, and strategies for TechFest robotics competitions, helping participants develop practical robotics skills and explore opportunities to participate in TechFest competitions through wildcard entries.\n\nOrganized by IEEE RGIPT Student Branch in collaboration with TechFest, IIT Bombay.',
+    roadmap: '',
+    highlights: [
+      'Hands-On Making & Bot Design',
+      'Learn Robotics and Build Your Technical Skills',
+      'Strategies for Roboreach, Meshmerize & Thetashift',
+      'Chance to get Wildcard Entry in TechFest, IIT Bombay',
+      'Mentorship from Senior IEEE Robotics Developers',
+    ],
+    topics: [
+      'Bot Design',
+      'Arduino Basics',
+      'Roboreach',
+      'Meshmerize',
+      'Thetashift',
+      'Sensors',
+      'TechFest IIT Bombay',
+    ],
+    duration: 'One-Day Intensive Workshop',
+    category: 'workshop',
+    banner_url: '/roboquest.png',
+    is_active: true,
+  },
+  {
     title: 'RoboGenesis',
     slug: 'robogenesis',
     tagline: 'Build. Learn. Compete. Innovate — One-Day Robotics Workshop',
@@ -41,7 +71,7 @@ const events = [
     duration: 'One-Day Intensive Workshop',
     category: 'workshop',
     banner_url: '/robogenises/ROBOGENESIS.png',
-    is_active: true,
+    is_active: false,
   },
   {
     title: 'DEVWAVE 2026',
