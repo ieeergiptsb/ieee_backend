@@ -99,11 +99,28 @@ router.post('/events/:slug/register', authenticate, async (req, res) => {
     const dashboardUrl = `${frontend.replace(/\/$/, '')}/dashboard`;
     try {
       const u = await User.findById(req.userId).select('email full_name').lean();
+      const recipients = [];
+
       if (u?.email) {
+        recipients.push({ email: u.email.trim(), name: u.full_name || 'Participant' });
+      }
+
+      if (Array.isArray(members)) {
+        members.forEach((m) => {
+          if (m?.email && typeof m.email === 'string' && m.email.trim()) {
+            const cleanEmail = m.email.trim();
+            if (!recipients.some((r) => r.email.toLowerCase() === cleanEmail.toLowerCase())) {
+              recipients.push({ email: cleanEmail, name: m.name || 'Participant' });
+            }
+          }
+        });
+      }
+
+      for (const rec of recipients) {
         await sendBootcampRegistrationConfirmationEmail(
-          u.email,
+          rec.email,
           event.title,
-          u.full_name,
+          rec.name,
           dashboardUrl
         );
       }
