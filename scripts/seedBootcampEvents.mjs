@@ -16,11 +16,11 @@ const events = [
   {
     title: 'RoboQuest',
     slug: 'roboquest',
-    tagline: 'Build. Learn. Compete. Innovate — One-Day Robotics Workshop',
+    tagline: 'Build. Learn. Compete. Innovate — One-Day Robotics Competition',
     short_description:
-      'RoboQuest is a robotics workshop organised by the IEEE RGIPT Robotics & Automation Society in association with TechFest, IIT Bombay.',
+      'RoboQuest is a robotics competition organised by the IEEE RGIPT Robotics & Automation Society in association with TechFest, IIT Bombay.',
     description:
-      'RoboQuest is a premier robotics workshop organised by the IEEE RGIPT Robotics & Automation Society in association with TechFest, IIT Bombay.\n\nThe workshop will cover bot design, Arduino basics, and strategies for TechFest robotics competitions, helping participants develop practical robotics skills and explore opportunities to participate in TechFest competitions through wildcard entries.\n\nOrganized by IEEE RGIPT Student Branch in collaboration with TechFest, IIT Bombay.',
+      'RoboQuest is a premier robotics competition organised by the IEEE RGIPT Robotics & Automation Society in association with TechFest, IIT Bombay.\n\nThe competition will cover bot design, Arduino basics, and strategies for TechFest robotics competitions, helping participants develop practical robotics skills and explore opportunities to participate in TechFest competitions through wildcard entries.\n\nOrganized by IEEE RGIPT Student Branch in collaboration with TechFest, IIT Bombay.',
     roadmap: '',
     highlights: [
       'Hands-On Making & Bot Design',
@@ -38,8 +38,8 @@ const events = [
       'Sensors',
       'TechFest IIT Bombay',
     ],
-    duration: 'One-Day Intensive Workshop',
-    category: 'workshop',
+    duration: 'Robotics Competition',
+    category: 'competition',
     banner_url: '/Roboquest2.0.png',
     is_active: true,
   },

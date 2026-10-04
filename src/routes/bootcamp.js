@@ -13,7 +13,7 @@ router.get('/events', cacheMiddleware(120), async (_req, res) => {
   try {
     const events = await BootcampEvent.find({ is_active: true })
       .select(
-        'title slug tagline short_description duration category banner_url start_date end_date highlights topics createdAt'
+        'title slug tagline short_description duration category banner_url start_date end_date highlights topics is_active createdAt'
       )
       .sort({ start_date: -1, createdAt: -1 })
       .lean();
@@ -85,9 +85,13 @@ router.post('/events/:slug/register', authenticate, async (req, res) => {
     if (existing) {
       return res.status(400).json({ success: false, error: 'You are already registered for this program' });
     }
+    const { team_name, team_size, members } = req.body || {};
     const registration = await BootcampRegistration.create({
       user_id: req.userId,
       event: event._id,
+      team_name: team_name || '',
+      team_size: team_size || (Array.isArray(members) ? members.length : 1),
+      members: Array.isArray(members) ? members : [],
     });
     clearCache('__api_cache__/admin/registrations');
 
