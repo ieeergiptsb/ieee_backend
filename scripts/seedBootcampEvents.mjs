@@ -179,5 +179,23 @@ if (roboEvent) {
   console.log('Upserted WhatsApp update for RoboGenesis:', updateResult._id);
 }
 
+const roboquestEvent = await BootcampEvent.findOne({ slug: 'roboquest' });
+if (roboquestEvent) {
+  const whatsappUpdate = {
+    event: roboquestEvent._id,
+    title: 'Official WhatsApp Community Group',
+    short_description:
+      'Join the official participants WhatsApp group for session schedules, bot design resources, competition updates, and TechFest wildcard entry announcements.',
+    link: 'https://chat.whatsapp.com/LlgjFstcvGqFd7blPkcXt3',
+  };
+
+  const updateResult = await BootcampUpdate.findOneAndUpdate(
+    { event: roboquestEvent._id, link: whatsappUpdate.link },
+    { $set: whatsappUpdate },
+    { upsert: true, new: true }
+  );
+  console.log('Upserted WhatsApp update for RoboQuest:', updateResult._id);
+}
+
 console.log('Done.');
 process.exit(0);
