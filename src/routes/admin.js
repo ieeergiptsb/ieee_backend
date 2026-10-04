@@ -12,20 +12,34 @@ const router = express.Router();
 const normalizeBootcampRegistration = (reg) => {
   const event = reg.event || {};
   const user = reg.user_id || {};
+
+  const defaultMembers = [
+    {
+      name: user.full_name || '',
+      email: user.email || '',
+      mobile: user.phone_number || '',
+      roll_no: user.roll_no || '',
+    },
+  ];
+
+  const hasTeamMembers = Array.isArray(reg.members) && reg.members.length > 0;
+  const membersList = hasTeamMembers
+    ? reg.members.map((m) => ({
+        name: m.name || '',
+        email: m.email || '',
+        mobile: m.mobile || '',
+        roll_no: m.roll_no || '',
+      }))
+    : defaultMembers;
+
   return {
     _id: reg._id,
     source: 'bootcamp',
     event_name: event.title || 'Bootcamp Program',
     event_slug: event.slug || '',
-    team_name: 'Individual',
-    team_size: 1,
-    members: [
-      {
-        name: user.full_name || '',
-        email: user.email || '',
-        mobile: user.phone_number || '',
-      },
-    ],
+    team_name: reg.team_name || (hasTeamMembers ? 'Team' : 'Individual'),
+    team_size: reg.team_size || membersList.length,
+    members: membersList,
     feedback: '',
     status: 'confirmed',
     registration_date: reg.registered_at || reg.createdAt,
