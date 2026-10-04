@@ -40,7 +40,7 @@ const events = [
     ],
     duration: 'One-Day Intensive Workshop',
     category: 'workshop',
-    banner_url: '/roboquest.png',
+    banner_url: '/Roboquest2.0.png',
     is_active: true,
   },
   {
